@@ -2,7 +2,6 @@
 
 > End-to-end test automation portfolio project. **This branch (`main`) contains only the application under test** — a RealWorld (Conduit) clone. The Playwright + TypeScript test framework is built up progressively in sibling branches.
 
-![RealWorld](./banner.jpg)
 
 ## About this repository
 
