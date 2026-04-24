@@ -65,3 +65,18 @@ yarn-error.log*
 /prisma/database.sqlite
 /prisma/test.sqlite
 /prisma/*.db-journal
+# ==========================================
+# Playwright
+# ==========================================
+# Playwright HTML report — генерируется после каждого прогона
+/playwright-report/
+# Артефакты тестов: скриншоты, видео, трейсы
+/test-results/
+# Allure — сырые результаты и готовый отчёт
+/allure-results/
+/allure-report/
+
+# Auth state — содержит токены сессии, секрет, никогда не коммитим.
+# Папку держим в репо через .gitkeep, но сами JSON-файлы игнорируем.
+/tests/auth/*.json
+!/tests/auth/.gitkeep
