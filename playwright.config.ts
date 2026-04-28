@@ -20,6 +20,14 @@ export default defineConfig({
   testDir: './tests/e2e',
   testMatch: '**/*.spec.ts',
 
+  /*
+   * globalSetup runs once before all tests: resets test DB, logs in via API,
+   * saves authenticated storageState for tests to reuse.
+   * globalTeardown runs once after all tests: closes DB connection.
+   */
+  globalSetup: require.resolve('./globalSetup'),
+  globalTeardown: require.resolve('./globalTeardown'),
+
   /* 60s per test — if a single E2E test takes longer, it's doing too much */
   timeout: 60_000,
   expect: { timeout: 10_000 },
