@@ -14,8 +14,23 @@
     "initialize:revert": "shx rm -f .env && shx rm -f prisma/database.sqlite",
     "initialize:fresh": "npm run initialize:revert && npm run initialize",
     "postinstall": "npm run initialize && prisma generate && prisma db push",
-    "test:initialize:database": "shx cp -n prisma/base.sqlite prisma/test.sqlite",
-    "test:run": "npm run test:initialize:database && echo 'Add your end-to-end test run command here'"
+
+    "test": "npx playwright test",
+    "test:headed": "npx playwright test --headed",
+    "test:ui": "npx playwright test --ui",
+    "test:debug": "npx playwright test --debug",
+    "test:chromium": "npx playwright test --project=chromium",
+    "test:firefox": "npx playwright test --project=firefox",
+    "test:mobile": "npx playwright test --project=mobile-chrome --project=mobile-safari",
+    "test:grep": "npx playwright test --grep",
+    "test:trace": "npx playwright show-trace",
+    "test:report": "npx playwright show-report",
+    "test:list": "npx playwright test --list",
+    "test:with-report": "npx playwright test && npm run allure:report",
+
+    "allure:generate": "allure generate allure-results --clean -o allure-report",
+    "allure:open": "allure open allure-report",
+    "allure:report": "npm run allure:generate && npm run allure:open"
   },
   "dependencies": {
     "@prisma/client": "^5.18.0",
