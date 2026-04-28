@@ -1,0 +1,51 @@
+{
+  "defaultUser": {
+    "email": "jake@jake.jake",
+    "username": "Jake",
+    "password": "jakejake"
+  },
+  "validUsers": [
+    {
+      "email": "test@mail.com",
+      "username": "Test",
+      "password": "11111111"
+    },
+    {
+      "email": "myuser@mail.com",
+      "username": "Myuser",
+      "password": "11111111"
+    }
+  ],
+  "invalidUsers": [
+    {
+      "description": "Password too short (7 chars, min is 8)",
+      "email": "shortpass@mail.com",
+      "username": "ShortPassUser",
+      "password": "1234567"
+    },
+    {
+      "description": "Invalid email format (not an email)",
+      "email": "bademail",
+      "username": "BadEmailUser",
+      "password": "ValidPass123"
+    },
+    {
+      "description": "Invalid email and short password combined",
+      "email": "bademail",
+      "username": "BadBothUser",
+      "password": "V3123"
+    },
+    {
+      "description": "Empty username (min length is 1)",
+      "email": "emptyname@mail.com",
+      "username": "",
+      "password": "ValidPass123"
+    }
+  ],
+  "profileUpdate": {
+    "email": "updated@mail.com",
+    "username": "UpdatedUser",
+    "bio": "Test bio for profile update",
+    "password": "22222222"
+  }
+}

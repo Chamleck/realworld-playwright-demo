@@ -1,0 +1,16 @@
+{
+  "validArticle": {
+    "title": "Test Article",
+    "description": "This is a test article for E2E testing.",
+    "body": "Lorem ipsum dolor sit amet, consectetur adipiscing elit. Sed do eiusmod tempor incididunt ut labore et dolore magna aliqua.",
+    "tagList": ["test"]
+  },
+  "updatedArticle": {
+    "title": "Updated Article Title",
+    "description": "Updated description for testing.",
+    "body": "Updated body content for the article."
+  },
+  "comment": {
+    "body": "This is a test comment."
+  }
+}
