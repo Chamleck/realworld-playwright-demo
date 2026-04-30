@@ -27,31 +27,67 @@ The system under test (SUT) is a [RealWorld](https://github.com/gothinkster/real
 - **Next.js 14** (pages router)
 - **tRPC** + `trpc-openapi` (adds a REST layer over tRPC for OpenAPI exposure)
 - **Prisma ORM** + **SQLite** (file-based DB, zero external infrastructure)
-- **JWT** auth — token stored in `sessionStorage` by the frontend
+- **JWT** auth — token stored in `sessionStorage` under key `token`
 - **TypeScript** strict mode, **Tailwind CSS**
 
-### Test framework (to be introduced in `setup/playwright` branch)
+### Test framework
 
-- **Playwright** + **TypeScript**
+- **Playwright 1.59** + **TypeScript**
 - **Allure** reporter (`allure-playwright` + `allure-commandline`)
-- **Playwright Trace Viewer** (built-in, no extra deps)
-- **GitHub Actions** for CI
+- **Playwright Trace Viewer** (built-in, trace on first retry)
+- **GitHub Actions** — PR pipeline (Chromium) + nightly regression (all browsers)
 - **dotenv** + **zod** for typed, validated env loading
+- **shx** for cross-platform npm scripts
 
 ---
 
-## Branch strategy (git flow for this project)
+## Branch strategy
 
 ```
-main                         ← application under test only (no tests)   [YOU ARE HERE]
- └── setup/playwright           ← Playwright infrastructure, config, CI, reporting
+main                         ← application under test only (no tests)
+ └── setup/playwright           ← Playwright infrastructure, config, CI, reporting  [YOU ARE HERE]
       └── tests/e2e-suite         ← actual spec files + Page Objects
-           └── dev                   ← stable integration branch, polish, final docs
+           └── dev                   ← stable integration, polish, final docs
 ```
 
-- Each branch opens a **pull request into its parent**. PRs are the primary demo artifact.
-- No direct pushes to `main`.
-- `dev` eventually merges back to `main` once the full project is complete.
+---
+
+## Project structure
+
+```
+realworld-playwright-demo/
+├── .github/workflows/
+│   ├── e2e.yml                    # PR pipeline — Chromium only, fast feedback
+│   └── nightly.yml                # Full regression — all 4 browsers, nightly schedule
+├── prisma/
+│   ├── base.sqlite                # Seed database (committed, never modified)
+│   ├── database.sqlite            # Dev DB (created by npm install, gitignored)
+│   ├── test.sqlite                # Test DB (created by globalSetup, gitignored)
+│   └── schema.prisma              # Prisma schema
+├── src/                           # Application source (do not modify)
+├── tests/
+│   ├── auth/
+│   │   └── .storage-state.json    # Saved auth state (gitignored, created by globalSetup)
+│   ├── e2e/                       # Spec files — one per feature area
+│   ├── fixtures/
+│   │   ├── data/
+│   │   │   ├── articles.json      # Test data: articles, comments
+│   │   │   ├── users.json         # Test data: valid/invalid users, profile updates
+│   │   │   └── types.ts           # TypeScript interfaces for JSON fixtures
+│   │   └── test-fixtures.ts       # Custom fixtures: authedPage, testUser
+│   ├── helpers/
+│   │   ├── api.ts                 # tRPC helpers: loginViaAPI, registerViaAPI
+│   │   ├── db.ts                  # Prisma helpers: seedUser, deleteUser, deleteArticle
+│   │   └── env.ts                 # Typed env loader with zod validation
+│   └── pages/                     # Page Object Models (to be added in tests/e2e-suite)
+├── globalSetup.ts                 # Runs before all tests: reset DB, save storageState
+├── globalTeardown.ts              # Runs after all tests: disconnect Prisma
+├── playwright.config.ts           # 4 browser projects, webServer, reporters
+├── .env.example                   # Env template (committed)
+├── .env                           # Local env values (gitignored)
+├── CLAUDE.md                      # This file
+└── README.md
+```
 
 ---
 
@@ -59,136 +95,162 @@ main                         ← application under test only (no tests)   [YOU A
 
 ### Package manager
 
-**npm** (not pnpm, not yarn). `package-lock.json` is committed and must be kept in sync.
+**npm** (not pnpm, not yarn). `package-lock.json` is committed.
 
 ### Code style
 
-- **ESLint + Prettier** are already configured for the app. Tests follow the same config.
-- **Strict TypeScript** everywhere — no `any` without an explanatory comment.
-- **Selectors**: prefer Playwright's semantic locators (`getByRole`, `getByLabel`, `getByPlaceholder`, `getByTestId`) over CSS/XPath. When a stable test hook is missing in the UI, add a `data-testid` attribute to the app rather than chain brittle CSS selectors in tests.
-- **Comments**: this is a learning-mode demo project — verbose block comments explaining **why** (not just **what**) are encouraged, especially above non-obvious config or fixtures.
-
-### Target structure (from `setup/playwright` onwards)
-
-```
-tests/
-  e2e/                 # spec files, one per feature area (auth.spec.ts, articles.spec.ts, ...)
-  pages/               # Page Object Models — class per page, receives `page: Page` via constructor
-  fixtures/
-    data/              # JSON test data (users.json, articles.json, ...)
-    test-fixtures.ts   # Playwright custom fixtures (authedPage, seededUser, ...)
-  helpers/
-    db.ts              # Prisma helpers: seedUser, deleteUser, deleteArticle
-    api.ts             # tRPC helpers: loginViaAPI, registerViaAPI
-    env.ts             # typed env loader (zod-validated)
-  auth/
-    .storage-state.json  # saved auth state — gitignored
-
-.github/
-  workflows/
-    e2e.yml            # PR pipeline — Chromium only, fast feedback
-    nightly.yml        # full matrix — all browsers + mobile, runs on schedule
-
-playwright.config.ts
-.env.example           # committed template
-.env                   # local overrides, gitignored
-```
+- **ESLint + Prettier** configured for the app. Tests follow the same config.
+- **Strict TypeScript** — no `any` without an explanatory comment.
+- **Selectors**: prefer `getByRole`, `getByLabel`, `getByPlaceholder`, `getByTestId` over CSS/XPath.
+- **Comments**: verbose block comments explaining **why**, not just **what** — this is a learning/demo project.
 
 ### Naming
 
 - Spec files: `<feature>.spec.ts` (e.g. `auth.spec.ts`, `articles.spec.ts`)
 - Page classes: `PascalCase` + `Page` suffix (`LoginPage`, `ArticlePage`)
-- Custom fixtures: `camelCase` functions exported from `test-fixtures.ts`
+- Custom fixtures: `camelCase` in `test-fixtures.ts`
 - JSON fixtures: `camelCase` filenames
+- Tags in tests: `@tagname` in test title (e.g. `@smoke`, `@auth`, `@articles`, `@profile`)
+
+### Test architecture
+
+- **Helpers** (`tests/helpers/`) — low-level functions (DB operations, API calls, env). No Playwright dependency.
+- **Fixtures** (`tests/fixtures/test-fixtures.ts`) — high-level Playwright fixtures that use helpers. Manage lifecycle (setup before test, teardown after).
+- **Page Objects** (`tests/pages/`) — one class per page, receives `page: Page` via constructor.
+- **Specs** (`tests/e2e/`) — test files that import fixtures and Page Objects.
+- **Data** (`tests/fixtures/data/`) — JSON test data, typed via `types.ts`.
+
+### Auth strategy
+
+- `globalSetup` logs in pre-seeded user (jake@jake.jake) via tRPC API → saves storageState.
+- `authedPage` fixture loads storageState → page starts logged in.
+- `testUser` fixture creates unique user in DB → provides to test → deletes after.
+- Tests that don't need auth use plain `page` (no storageState).
+
+### Database strategy
+
+- `base.sqlite` — seed data, committed, never modified.
+- `database.sqlite` — dev DB for `npm run dev`, created by `npm install`.
+- `test.sqlite` — test DB, reset from `base.sqlite` in `globalSetup` before every run.
+- All test helpers use `TEST_DATABASE_URL`, never `DATABASE_URL`.
 
 ---
 
 ## Environment variables
 
-The **application** requires (loaded from `.env`, copied from `.env.example`):
+Defined in `.env.example`, validated by `tests/helpers/env.ts` via zod:
 
-```bash
-DATABASE_URL="file:./database.sqlite"
-JWT_SECRET="some-super-secret-string"
-```
+| Variable | Purpose | Default |
+|---|---|---|
+| `DATABASE_URL` | App database | `file:./database.sqlite` |
+| `JWT_SECRET` | JWT signing key | `some-super-secret-string` |
+| `BASE_URL` | App URL for tests | `http://localhost:3000` |
+| `TEST_DATABASE_URL` | Test database | `file:./test.sqlite` |
+| `TEST_USER_EMAIL` | Pre-seeded user email | `jake@jake.jake` |
+| `TEST_USER_PASSWORD` | Pre-seeded user password | `jakejake` |
 
-`npm run initialize:env` copies `.env.example` → `.env` automatically (idempotent — won't overwrite).
-
-The **test framework** (to be added in `setup/playwright`) will additionally require:
-
-```bash
-BASE_URL=http://localhost:3000
-TEST_USER_EMAIL=...
-TEST_USER_PASSWORD=...
-TEST_DATABASE_URL="file:./test.sqlite"
-```
-
-All env vars must be validated at startup via zod. New vars require adding them to **both** `.env.example` AND the zod schema in `tests/helpers/env.ts`.
+New variables must be added to: `.env.example` + `tests/helpers/env.ts` + GitHub Secrets (if sensitive) + workflow env (if needed in CI).
 
 ---
 
 ## Commands
 
-### Current (`main` branch)
-
 | Command | What it does |
 |---|---|
-| `npm install` | Installs deps + runs postinstall (env + DB setup + Prisma generate) |
-| `npm run dev` | Starts Next.js dev server on `localhost:3000` |
-| `npm run build` / `npm run start` | Production build + serve |
-| `npm run lint` | ESLint |
-| `npm run initialize:fresh` | Reset `.env` and DB to seed state |
-
-### Placeholder scripts (inherited from template, to be replaced in `setup/playwright`)
-
-| Command | Current state |
-|---|---|
-| `npm run test:initialize:database` | Copies `base.sqlite` → `test.sqlite`. Will be kept and wired into `globalSetup`. |
-| `npm run test:run` | Prints an echo. Will be replaced with `playwright test`. |
-
-### Planned (added progressively in later branches)
-
-| Command | What it does |
-|---|---|
+| `npm run dev` | Start Next.js dev server |
 | `npm test` | Run all Playwright tests (headless) |
-| `npm run test:ui` | Playwright UI mode |
-| `npm run test:headed` | Headed mode |
-| `npm run test:debug` | Playwright debug mode |
-| `npm run test:trace` | Open Trace Viewer on the last run |
-| `npm run allure:generate` | Build Allure report from `allure-results/` |
-| `npm run allure:open` | Open the generated Allure report |
+| `npm run test:chromium` | Run tests in Chromium only |
+| `npm run test:firefox` | Run tests in Firefox only |
+| `npm run test:mobile` | Run tests in Mobile Chrome + Mobile Safari |
+| `npm run test:headed` | Run tests with visible browser |
+| `npm run test:ui` | Playwright UI mode (visual debugger) |
+| `npm run test:debug` | Step-by-step debugging with DevTools |
+| `npm run test:grep -- @smoke` | Run tests matching a tag |
+| `npm run test:list` | List all tests without running |
+| `npm run test:with-report` | Run tests + generate and open Allure report |
+| `npm run test:report` | Open Playwright HTML report |
+| `npm run test:trace` | Open Trace Viewer |
+| `npm run allure:generate` | Generate Allure report from allure-results/ |
+| `npm run allure:open` | Open generated Allure report |
+| `npm run allure:report` | Generate + open Allure report |
 
 ---
 
-## Architectural decisions (ADRs)
+## CI/CD
 
-*Grows as decisions are made. Each decision gets a short rationale so future readers understand the "why".*
+### PR Pipeline (`e2e.yml`)
 
-### D1 — Why Playwright, not Cypress *(to be expanded in `setup/playwright`)*
+- Triggers: push/PR to `setup/playwright`, `tests/e2e-suite`, `dev`, `main`
+- Browser: Chromium only (fast feedback)
+- Manual trigger with optional `--grep` tag filter
+- Artifacts: Playwright report, Allure report, traces on failure
 
-Headlines: native WebKit support (real Safari testing, not simulated via userAgent), built-in parallelism and sharding, auto-waiting locators, first-class Trace Viewer with time-travel debugging, cleaner `async`/`await` model, superior TypeScript inference, better CI story with sharding and dependency projects.
+### Nightly Regression (`nightly.yml`)
 
-### D2 — Auth via API + storage state *(planned, `setup/playwright`)*
+- Schedule: 2:00 AM UTC daily
+- Matrix: chromium, firefox, mobile-chrome, mobile-safari
+- Manual trigger with tag filter and browser selection
+- Per-browser artifacts
 
-Rather than logging in through the UI on every test, log in **once** via the tRPC API in `global.setup.ts`, save `sessionStorage` + cookies to `tests/auth/.storage-state.json`, and reuse it as the default state for authenticated specs. Cuts per-test startup by several seconds and eliminates a common source of flake (the login form itself).
+### GitHub Secrets
 
-### D3 — Separate test database *(planned, `setup/playwright`)*
-
-Tests run against `prisma/test.sqlite`, reset from `prisma/base.sqlite` in `globalSetup`. `DATABASE_URL` is overridden at the test-process level so the dev database is never touched.
-
-### D4 — Allure on top of Playwright's HTML reporter *(planned, `setup/playwright`)*
-
-Playwright's HTML reporter stays as the quick-look local debugging tool. Allure layers on top for richer reporting: history, trends, severity tags, step-level attachments. Traces, screenshots, and videos attach to Allure results automatically.
+| Secret | Used for |
+|---|---|
+| `JWT_SECRET` | JWT token signing in test environment |
+| `TEST_USER_EMAIL` | Pre-seeded user login |
+| `TEST_USER_PASSWORD` | Pre-seeded user login |
 
 ---
 
-## Notes for Claude Code (when assisting on this repo)
+## Validation rules (from app source code)
 
-- **When adding a new test**, follow the Page Object pattern established in `tests/pages/`. Don't put selectors in spec files.
-- **Prefer semantic locators**: `page.getByRole('button', { name: /sign up/i })` over `page.locator('button:has-text("Sign up")')`.
-- **Every new env variable** must be added to **both** `.env.example` AND the zod schema in `tests/helpers/env.ts` — otherwise it won't be validated at startup and will silently be `undefined`.
-- **CI workflows** live in `.github/workflows/`. If you add a new npm script that should run in CI, update the workflow in the same commit.
-- **Verbose comments** explaining design choices are welcome, even encouraged — this is a learning/demo project.
-- **When modifying a Page Object's public API**, update the specs that use it in the same commit.
-- **Don't touch application code** in `src/` unless the task explicitly calls for it (e.g. adding `data-testid` attributes to improve test selectors). All other work happens in `tests/`, `.github/`, and root config files.
-- **Placeholder scripts** `test:run` and `test:initialize:database` exist in `package.json` from the upstream template — they are intentionally left there to be replaced in the `setup/playwright` branch. Don't remove them from `main`.
+Reference for writing test data (`tests/fixtures/data/`):
+
+| Field | Rule | Source |
+|---|---|---|
+| `email` | `z.string().email()` | `authentication.ts` |
+| `username` | `z.string().min(1)` | `authentication.ts` |
+| `password` | `z.string().min(8)` | `authentication.ts` |
+| `title` | `z.string().min(1)` | `articles.ts` |
+| `description` | `z.string().min(1)` | `articles.ts` |
+| `body` | `z.string().min(1)` | `articles.ts` |
+| `tagList` | `z.string().array()` | `articles.ts` |
+
+---
+
+## Planned improvements (M4 — dev branch)
+
+These are documented decisions to be implemented during the final polish phase:
+
+### P1 — Multi-environment support via secret prefixes
+
+GitHub Environments are paid for private repos. Instead, use prefixed secrets in the shared space (`STAGING_JWT_SECRET`, `PROD_JWT_SECRET`) with `workflow_dispatch` environment selector. Workflows will substitute the correct prefix based on the chosen environment. Commented-out templates will be added to `.env.example` and workflow files.
+
+### P2 — Allure trace attachment for failed tests
+
+Add `testInfo.attach('trace', { path: traceFile })` in the `authedPage` fixture teardown. When a test fails, the trace file will be embedded in the Allure report — clickable download button next to the failed test, no need to dig through separate artifacts.
+
+### P3 — Flake stabilization
+
+After all specs are written (M3), analyze test stability across 10+ CI runs. Identify and fix flaky tests: add explicit waits, improve selectors, adjust timeouts, isolate test data better.
+
+### P4 — Dependency audit
+
+One deliberate commit addressing npm audit findings. Document which vulnerabilities are in dev-only transitive dependencies (safe to ignore) vs which need action.
+
+### P5 — README with CI badges
+
+Final README with status badges (CI passing, Playwright version), architecture diagram, quick start guide, full command reference, and "How to evaluate this project" section for recruiters.
+
+---
+
+## Notes for Claude Code
+
+- **Follow the Page Object pattern** in `tests/pages/`. Don't put selectors in spec files.
+- **Prefer semantic locators**: `page.getByRole('button', { name: /sign up/i })` over CSS selectors.
+- **New env variables** → add to `.env.example` + `env.ts` zod schema + GitHub Secrets.
+- **New npm scripts** → update workflow if needed in the same commit.
+- **Don't touch `src/`** unless adding `data-testid` attributes.
+- **Import test and expect** from `tests/fixtures/test-fixtures.ts`, not from `@playwright/test` directly.
+- **Verbose comments** are welcome — this is a learning/demo project.
+- **Tags**: use `@tagname` in test titles for filtering. Common tags: `@smoke`, `@auth`, `@articles`, `@profile`.

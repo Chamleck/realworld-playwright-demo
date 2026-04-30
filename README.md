@@ -1,71 +1,132 @@
 # RealWorld Playwright Demo
 
-> End-to-end test automation portfolio project. **This branch (`main`) contains only the application under test** — a RealWorld (Conduit) clone. The Playwright + TypeScript test framework is built up progressively in sibling branches.
-
+> End-to-end test automation portfolio project: **Playwright + TypeScript** framework built from scratch against a RealWorld (Conduit) full-stack application.
 
 ## About this repository
 
-This project demonstrates how to build a scalable, maintainable end-to-end test automation framework **from scratch** using Playwright + TypeScript against a realistic full-stack web application.
+This project demonstrates how to build a scalable, maintainable E2E test automation framework from scratch. The application under test is a [RealWorld](https://github.com/gothinkster/realworld) Medium.com clone ("Conduit") built on Next.js 14 + tRPC + Prisma + SQLite.
 
-The application under test is an implementation of the [RealWorld spec](https://github.com/gothinkster/realworld) — a fully functional Medium.com clone ("Conduit") with authentication, articles CRUD, comments, follows, favorites, and user profiles. It's built on Next.js 14 + tRPC + Prisma + SQLite.
-
-See [APPLICATION.md](./APPLICATION.md) for the full application architecture.
+See [APPLICATION.md](./APPLICATION.md) for the app architecture.
 
 ## Branch strategy
 
-This repo follows a deliberately linear branch narrative so the project can be reviewed as a sequence of pull requests, each representing a distinct phase of building the framework:
-
 | Branch | What's in it |
 |---|---|
-| `main` | Application under test only — no E2E framework yet. *You are here.* |
-| `setup/playwright` | Playwright infrastructure: config, fixtures, helpers, env, Allure, GitHub Actions. No spec files yet — framework runs "empty". |
-| `tests/e2e-suite` | Actual specs (auth, articles, profile) using the framework from the setup branch. |
-| `dev` | Stable integration branch. Flake hardening, final documentation polish. |
+| `main` | Application under test only — no E2E framework. |
+| `setup/playwright` | Playwright infrastructure: config, fixtures, helpers, env, Allure, GitHub Actions. **You are here.** |
+| `tests/e2e-suite` | Actual specs (auth, articles, profile) using the framework. |
+| `dev` | Stable integration branch. Final polish and documentation. |
 
-Each branch opens a pull request into its parent. The PRs themselves are part of the demonstration — they show the evolution of the project as discrete, reviewable units of work.
+Each branch opens a PR into its parent — the PRs show the evolution of the project.
 
-## Running the application
+## Quick start
 
 ### Prerequisites
 
-- Node.js 18 or higher
-- npm (bundled with Node)
+- Node.js 18+
+- npm
 
-### Install & run
+### Install & run tests
 
 ```bash
-npm install      # installs deps, seeds database, generates Prisma client
-npm run dev      # starts the app on http://localhost:3000
+git clone https://github.com/Chamleck/realworld-playwright-demo.git
+cd realworld-playwright-demo
+git checkout setup/playwright
+npm install
+npx playwright install
+npm test
 ```
 
-`npm install` automatically runs `postinstall` which:
-1. Copies `.env.example` → `.env` if it doesn't exist.
-2. Copies `prisma/base.sqlite` → `prisma/database.sqlite` (seed data).
-3. Generates the Prisma client.
-4. Applies the Prisma schema to the database.
+`npm test` will automatically start the application, run all tests, and stop the server.
 
-### Available scripts
+### Common commands
 
-| Script | Purpose |
+| Command | Purpose |
 |---|---|
-| `npm run dev` | Start the development server (`localhost:3000`) |
-| `npm run build` | Production build |
-| `npm run start` | Start the production server (requires `build` first) |
-| `npm run lint` | Run ESLint |
-| `npm run initialize:fresh` | Reset `.env` and database back to seed state |
+| `npm test` | All tests, all browsers, headless |
+| `npm run test:chromium` | Chromium only |
+| `npm run test:firefox` | Firefox only |
+| `npm run test:mobile` | Mobile Chrome + Mobile Safari |
+| `npm run test:headed` | With visible browser |
+| `npm run test:ui` | Playwright UI mode (visual debugger) |
+| `npm run test:debug` | Step-by-step debugging with DevTools |
+| `npm run test:grep -- @smoke` | Run tests by tag |
+| `npm run test:list` | List all tests without running |
+| `npm run test:with-report` | Tests + generate and open Allure report |
+| `npm run test:report` | Open Playwright HTML report |
+| `npm run test:trace` | Open Trace Viewer |
+| `npm run allure:generate` | Generate Allure report from allure-results/ |
+| `npm run allure:open` | Open generated Allure report |
+| `npm run allure:report` | Generate + open Allure report |
 
-The `test:run` and `test:initialize:database` scripts are placeholders from the upstream template. They will be replaced with real Playwright commands in the `setup/playwright` branch.
+## Architecture
 
-## What to look at in this repo
+### Test framework layers
 
-If you're evaluating this project as a portfolio piece:
+```
+Specs (tests/e2e/*.spec.ts)
+  ├── use Fixtures (tests/fixtures/test-fixtures.ts)
+  │     ├── authedPage — browser with pre-loaded auth session
+  │     └── testUser — unique user seeded in DB, cleaned up after test
+  ├── use Page Objects (tests/pages/*Page.ts)
+  │     └── encapsulate selectors and page interactions
+  └── use Test Data (tests/fixtures/data/*.json)
+        └── typed JSON templates for users, articles, comments
 
-1. **Start here** (`main`) — to understand the application under test.
-2. **Switch to `setup/playwright`** — to see how the test framework is wired up: config, fixtures, env validation, reporting, CI.
-3. **Switch to `tests/e2e-suite`** — to see the actual Page Objects and specs.
-4. **Switch to `dev`** — to see the stabilized, production-ready state.
+Fixtures call Helpers (tests/helpers/)
+  ├── db.ts — Prisma: seedUser, deleteUser, deleteArticle
+  ├── api.ts — tRPC: loginViaAPI, registerViaAPI
+  └── env.ts — zod-validated environment variables
+```
 
-Reading the pull requests in order (main → setup/playwright → tests → dev) is the recommended way to understand the architecture decisions that went into the project.
+### Browser coverage
+
+| Project | Device | Engine |
+|---|---|---|
+| `chromium` | Desktop Chrome 1920×1080 | Blink |
+| `firefox` | Desktop Firefox | Gecko |
+| `mobile-chrome` | Pixel 7 (412×915) | Blink |
+| `mobile-safari` | iPhone 13 (390×844) | WebKit |
+
+### CI/CD
+
+- **PR pipeline** (`e2e.yml`): Chromium only, runs on every push/PR. Fast feedback.
+- **Nightly regression** (`nightly.yml`): All 4 browsers, runs at 2:00 AM UTC daily.
+- Both support manual trigger with tag filtering and browser selection.
+- Artifacts: Playwright HTML report, Allure report, traces/screenshots/videos on failure.
+
+### Auth strategy
+
+`globalSetup` logs in once via tRPC API → saves session to `storageState.json`. Tests use `authedPage` fixture (logged in) or plain `page` (anonymous). No UI login in setup — fast and stable.
+
+### Database isolation
+
+Tests use a separate `test.sqlite` (copied from seed data in `globalSetup`). Dev database (`database.sqlite`) is never touched by tests.
+
+## Environment variables
+
+Copy `.env.example` to `.env` (done automatically by `npm install`):
+
+```bash
+DATABASE_URL="file:./database.sqlite"
+JWT_SECRET="some-super-secret-string"
+BASE_URL="http://localhost:3000"
+TEST_DATABASE_URL="file:./test.sqlite"
+TEST_USER_EMAIL="jake@jake.jake"
+TEST_USER_PASSWORD="jakejake"
+```
+
+All variables are validated at startup via zod — missing or malformed values fail immediately with a clear error.
+
+## How to evaluate this project
+
+If you're reviewing this as a portfolio piece:
+
+1. **Read the PRs** — each branch opens a PR showing a distinct phase of building the framework.
+2. **Look at the architecture** — `tests/` folder structure, separation of helpers/fixtures/pages/specs.
+3. **Check the CI** — `.github/workflows/` for pipeline design, artifact handling, matrix strategy.
+4. **Run the tests** — `npm test` to see it work end-to-end.
+5. **Read CLAUDE.md** — documents every architectural decision.
 
 ## License
 
