@@ -1,0 +1,107 @@
+# =============================================================================
+# E2E Tests — Nightly Regression
+# =============================================================================
+#
+# Full cross-browser regression: Chromium, Firefox, Mobile Chrome, Mobile Safari.
+# Runs on schedule (every night at 2:00 AM UTC) and on manual trigger.
+#
+# This catches browser-specific bugs that the fast PR pipeline (Chromium-only)
+# would miss: WebKit rendering differences, Firefox event handling quirks,
+# mobile viewport issues, touch event problems.
+
+name: Nightly Regression
+
+on:
+  schedule:
+    # Every night at 2:00 AM UTC (adjust to your timezone)
+    - cron: '0 2 * * *'
+
+  # Allow manual trigger with optional tag filter and browser selection
+  workflow_dispatch:
+    inputs:
+      grep:
+        description: 'Filter tests by tag (e.g. @smoke, @auth)'
+        required: false
+        default: ''
+      project:
+        description: 'Browser project (leave empty for all)'
+        required: false
+        default: ''
+        type: choice
+        options:
+          - ''
+          - chromium
+          - firefox
+          - mobile-chrome
+          - mobile-safari
+
+jobs:
+  nightly:
+    name: E2E ${{ matrix.project }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    strategy:
+      fail-fast: false
+      matrix:
+        project: [chromium, firefox, mobile-chrome, mobile-safari]
+
+    env:
+      CI: true
+      BASE_URL: http://localhost:3000
+      DATABASE_URL: file:./database.sqlite
+      TEST_DATABASE_URL: file:./test.sqlite
+      JWT_SECRET: ${{ secrets.JWT_SECRET }}
+      TEST_USER_EMAIL: ${{ secrets.TEST_USER_EMAIL }}
+      TEST_USER_PASSWORD: ${{ secrets.TEST_USER_PASSWORD }}
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 18
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      # Install only the browser needed for this matrix job
+      - name: Install Playwright browser
+        run: npx playwright install --with-deps ${{ matrix.project == 'mobile-chrome' && 'chromium' || matrix.project == 'mobile-safari' && 'webkit' || matrix.project }}
+
+      - name: Run E2E tests
+        run: >
+          npx playwright test
+          --project=${{ matrix.project }}
+          ${{ github.event.inputs.grep && format('--grep "{0}"', github.event.inputs.grep) || '' }}
+
+      - name: Generate Allure report
+        if: always()
+        run: npm run allure:generate
+
+      - name: Upload Playwright report
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: playwright-report-${{ matrix.project }}
+          path: playwright-report/
+          retention-days: 14
+
+      - name: Upload Allure report
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: allure-report-${{ matrix.project }}
+          path: allure-report/
+          retention-days: 14
+
+      - name: Upload test results (traces, screenshots, videos)
+        uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: test-results-${{ matrix.project }}
+          path: test-results/
+          retention-days: 7
