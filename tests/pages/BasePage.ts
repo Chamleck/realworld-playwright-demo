@@ -37,7 +37,7 @@ export class BasePage {
 
   /* Get the nav link to the current user's profile (dynamic text) */
   getNavProfile(username: string): Locator {
-    return this.page.getByRole('link', { name: username }).filter({ has: this.page.locator('.user-pic') });
+    return this.page.locator('.navbar').getByRole('link', { name: username });
   }
 
   /* Get error messages displayed on forms (ul.error-messages > li) */

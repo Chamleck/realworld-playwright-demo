@@ -50,6 +50,7 @@ const envSchema = z.object({
   /* Pre-seeded test user credentials */
   TEST_USER_EMAIL: z.string().email().default('jake@jake.jake'),
   TEST_USER_PASSWORD: z.string().min(1).default('jakejake'),
+  TEST_USER_USERNAME: z.string().min(1).default('globalTestUser'),
 });
 
 /**
