@@ -128,3 +128,77 @@ export async function registerViaAPI(input: RegisterInput): Promise<AuthResult> 
     token: user.token,
   };
 }
+
+/* ------------------------------------------------------------------ */
+/*  Article helpers                                                    */
+/* ------------------------------------------------------------------ */
+
+export interface ArticleInput {
+  title: string;
+  description: string;
+  body: string;
+  tagList: string[];
+}
+
+export interface ArticleResult {
+  slug: string;
+  title: string;
+  description: string;
+  body: string;
+}
+
+/**
+ * Create an article via the tRPC articles.createArticle endpoint.
+ *
+ * Used by the seededArticle fixture to create precondition data
+ * without going through the UI. Faster and avoids slug conflicts
+ * that occur when multiple parallel tests create articles via UI
+ * with the same title at the same time.
+ *
+ * @param token  - JWT token from loginViaAPI or globalSetup
+ * @param input  - article data (title, description, body, tagList)
+ */
+export async function createArticleViaAPI(
+  token: string,
+  input: ArticleInput
+): Promise<ArticleResult> {
+  const response = await fetch(`${env.BASE_URL}/api/trpc/articles.createArticle?batch=1`, {
+    method: 'POST',
+    headers: {
+      'content-type': 'application/json',
+      'authorization': `Token ${token}`,
+    },
+    body: JSON.stringify({
+      0: {
+        json: {
+          article: {
+            title: input.title,
+            description: input.description,
+            body: input.body,
+            tagList: input.tagList,
+          },
+        },
+      },
+    }),
+  });
+
+  if (!response.ok) {
+    throw new Error(`createArticle API returned ${response.status}: ${await response.text()}`);
+  }
+
+  const body = await response.json();
+  const article = body?.[0]?.result?.data?.json?.article;
+
+  if (!article?.slug) {
+    throw new Error(
+      `createArticle API did not return an article. Response: ${JSON.stringify(body, null, 2)}`
+    );
+  }
+
+  return {
+    slug: article.slug,
+    title: article.title,
+    description: article.description,
+    body: article.body,
+  };
+}

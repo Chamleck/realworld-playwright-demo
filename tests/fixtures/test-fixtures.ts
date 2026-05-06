@@ -4,6 +4,7 @@
  * Extends the base `test` object with project-specific fixtures:
  *   - authedPage: a Page with pre-loaded storageState (logged-in user)
  *   - testUser: a unique user seeded in DB, cleaned up after the test
+ *   - seededArticle: a unique article created via API, cleaned up after the test
  *
  * Usage in specs:
  *   import { test, expect } from '../fixtures/test-fixtures';
@@ -16,8 +17,9 @@
 
 import { test as base, expect, type Page } from '@playwright/test';
 import path from 'path';
-import { seedUser, deleteUser, type SeedUserResult } from '../helpers/db';
-import { loginViaAPI } from '../helpers/api';
+import { seedUser, deleteUser, deleteArticle, type SeedUserResult } from '../helpers/db';
+import { loginViaAPI, createArticleViaAPI, type ArticleResult } from '../helpers/api';
+import articlesData from './data/articles.json';
 
 /* Path to the storageState file created by globalSetup */
 const STORAGE_STATE_PATH = path.resolve(
@@ -38,6 +40,12 @@ interface TestUser extends SeedUserResult {
 }
 
 /**
+ * SeededArticle — what the seededArticle fixture provides to the test.
+ * Includes article fields returned from the API.
+ */
+interface SeededArticle extends ArticleResult {}
+
+/**
  * Declare the shape of our custom fixtures.
  * Each key becomes available as a parameter in test().
  */
@@ -46,6 +54,12 @@ type CustomFixtures = {
   authedPage: Page;
   /** Unique user created in DB before the test, deleted after */
   testUser: TestUser;
+  /**
+   * Unique article created via API before the test, deleted after.
+   * Uses a unique title (title + timestamp + parallelIndex) to avoid
+   * slug collisions when tests run in parallel.
+   */
+  seededArticle: SeededArticle;
 };
 
 /* ------------------------------------------------------------------ */
@@ -59,7 +73,7 @@ export const test = base.extend<CustomFixtures>({
    *
    * Creates a new browser context with storageState from globalSetup,
    * then creates a page in that context. The page starts "logged in"
-   * because sessionStorage already has the JWT token.
+   * because localStorage already has the JWT token.
    *
    * Lifecycle:
    *   1. Create context with storageState → page is authenticated
@@ -72,10 +86,8 @@ export const test = base.extend<CustomFixtures>({
     });
     const page = await context.newPage();
 
-    /* Hand the authenticated page to the test */
     await use(page);
 
-    /* Cleanup: close context (and page) after the test */
     await context.close();
   },
 
@@ -88,10 +100,6 @@ export const test = base.extend<CustomFixtures>({
    * Uniqueness is guaranteed by combining:
    *   - Date.now() — millisecond timestamp
    *   - testInfo.parallelIndex — worker number (0, 1, 2...)
-   *
-   * This prevents collisions when tests run in parallel:
-   *   Worker 0: test_1714000001_w0@test.com
-   *   Worker 1: test_1714000002_w1@test.com
    *
    * Lifecycle:
    *   1. Generate unique email/username
@@ -109,11 +117,61 @@ export const test = base.extend<CustomFixtures>({
       password,
     });
 
-    /* Provide user data to the test (including plaintext password) */
     await use({ ...seeded, password });
 
-    /* Cleanup: delete the user and all their data after the test */
     await deleteUser(seeded.email);
+  },
+
+  /**
+   * seededArticle fixture.
+   *
+   * Creates a unique article via the tRPC API before the test,
+   * provides article data (slug, title, description, body) to the test,
+   * deletes the article after — even if the test fails.
+   *
+   * Why API instead of UI?
+   *   - Creating articles via UI in parallel causes slug collisions:
+   *     multiple workers submit "Test Article" at nearly the same time,
+   *     the server generates test-article-1 for all of them → unique constraint fails.
+   *   - API creation is atomic and uses the GLOBAL_TEST_USER JWT token.
+   *   - Tests that need an existing article as a precondition (edit, delete,
+   *     comment, favorite) should use this fixture.
+   *   - Tests that verify the article creation UI should create via UI directly.
+   *
+   * Uniqueness:
+   *   Title = base title + timestamp + parallelIndex
+   *   e.g. "Test Article 1714000001234_w0"
+   *   This guarantees unique slugs even across parallel workers.
+   *
+   * Lifecycle:
+   *   1. Login as GLOBAL_TEST_USER via API to get JWT token
+   *   2. Create article via API with unique title
+   *   3. yield article data to the test
+   *   4. Delete article via Prisma after the test
+   */
+  seededArticle: async ({}, use, testInfo) => {
+    const uniqueId = `${Date.now()}_w${testInfo.parallelIndex}`;
+    const article = articlesData.validArticle;
+
+    /* Login as GLOBAL_TEST_USER to get a fresh JWT token for the API call */
+    const { GLOBAL_TEST_USER } = await import('../../globalSetup');
+    const auth = await loginViaAPI({
+      email: GLOBAL_TEST_USER.email,
+      password: GLOBAL_TEST_USER.password,
+    });
+
+    /* Create article via API with a unique title */
+    const created = await createArticleViaAPI(auth.token, {
+      title: `${article.title} ${uniqueId}`,
+      description: article.description,
+      body: article.body,
+      tagList: article.tagList,
+    });
+
+    await use(created);
+
+    /* Cleanup: delete the article after the test */
+    await deleteArticle(created.slug);
   },
 });
 

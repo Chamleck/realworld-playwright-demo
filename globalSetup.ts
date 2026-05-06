@@ -128,42 +128,51 @@ async function globalSetup() {
   /* ---------------------------------------------------------------- */
   /* Step 4: Save storageState with the JWT token                      */
   /* ---------------------------------------------------------------- */
-
+ 
   /*
-   * The Conduit app stores the JWT in sessionStorage under key "token".
+   * The Conduit app stores the JWT in localStorage under key "token"
+   * (src/lib/api.ts — setToken/getToken functions).
+   *
+   * Note: Originally the app used sessionStorage, but we switched to
+   * localStorage because Playwright's storageState reliably captures
+   * localStorage contents, while sessionStorage capture is not guaranteed.
+   * The app's src/lib/api.ts was updated accordingly.
+   *
    * To make the browser "already logged in", we need to:
-   *   1. Open a real browser (sessionStorage is a browser API)
-   *   2. Navigate to the app's origin (sessionStorage is per-origin)
-   *   3. Inject the token into sessionStorage
-   *   4. Save the entire browser state (cookies + storage) to a JSON file
+   *   1. Open a real browser (localStorage is a browser API)
+   *   2. Navigate to the app's origin (localStorage is per-origin)
+   *   3. Wait for full page load (ensures the origin is fully registered)
+   *   4. Inject the token into localStorage
+   *   5. Save the entire browser state (cookies + localStorage) to a JSON file
    *
    * This file is then loaded by the authedPage fixture for every
    * authenticated test via browser.newContext({ storageState: ... }).
    *
    * Why open a real browser just for this?
-   * sessionStorage can only be set from within a browser context bound
+   * localStorage can only be set from within a browser context bound
    * to a specific origin. There's no way to write it from Node.js directly.
    * This adds ~1-2 seconds to setup but only happens once per test run.
    */
   const browser = await chromium.launch();
   const context = await browser.newContext();
   const page = await context.newPage();
-
-  /* Navigate to app — needed so sessionStorage is bound to localhost:3000 */
+ 
+  /* Navigate to app and wait for full load — establishes the origin */
   await page.goto(env.BASE_URL);
-
-  /* Inject JWT into sessionStorage (key = 'token', same as the app uses) */
+  await page.waitForLoadState('networkidle');
+ 
+  /* Inject JWT into localStorage (key = 'token', same as the app uses) */
   await page.evaluate((token) => {
-    sessionStorage.setItem('token', token);
+    localStorage.setItem('token', token);
   }, auth.token);
-
-  /* Save browser state to JSON file — includes cookies and sessionStorage */
+ 
+  /* Save browser state to JSON file — includes cookies and localStorage */
   await context.storageState({ path: STORAGE_STATE_PATH });
   console.log(`  ✅ Storage state saved to ${STORAGE_STATE_PATH}`);
-
+ 
   await browser.close();
-
+ 
   console.log('\n🔧 Global Setup: done!\n');
 }
-
+ 
 export default globalSetup;

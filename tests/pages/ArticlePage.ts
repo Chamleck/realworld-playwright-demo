@@ -51,8 +51,8 @@ export class ArticlePage extends BasePage {
   /* Delete a comment by its text content */
   async deleteComment(text: string) {
     const comment = this.comments.filter({ hasText: text });
-    await comment.getByRole('button').click();
-  }
+    await comment.locator('i.ion-trash-a').click();
+}
 
   /* Click the favorite button (toggle) */
   async toggleFavorite() {

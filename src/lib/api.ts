@@ -20,11 +20,11 @@ export const setToken = (newToken: string | null) => {
     return
   }
   window.dispatchEvent(new CustomEvent(TokenUpdatedEventKey))
-  window.sessionStorage.setItem('token', newToken ?? '')
+  window.localStorage.setItem('token', newToken ?? '')
 }
 
 export const getToken = () =>
-  typeof window === 'undefined' ? null : window.sessionStorage.getItem('token')
+typeof window === 'undefined' ? null : window.localStorage.getItem('token')
 
 export const useIsLoggedIn = () => {
   const [isLoggedIn, setIsLoggedIn] = useState(false)
