@@ -168,7 +168,8 @@ test.describe('Login @auth', () => {
     await loginPage.login(invalidUser.email, invalidUser.password);
     await responsePromise;
 
-    await expect(loginPage.errorMessages.first()).toBeVisible();
+    await expect(loginPage.errorMessages.filter({ hasText: 'Invalid email' })).toBeVisible();
+    await expect(loginPage.errorMessages.filter({ hasText: 'at least 8 character' })).toBeVisible();
   });
 });
 

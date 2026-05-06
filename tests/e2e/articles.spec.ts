@@ -17,6 +17,7 @@ import {
   HomePage,
   CreateArticlePage,
   ArticlePage,
+  ProfilePage,
 } from '../pages';
 import { GLOBAL_TEST_USER } from '../../globalSetup';
 import articlesData from '../fixtures/data/articles.json';
@@ -96,6 +97,19 @@ test.describe('Article CRUD @articles', () => {
     );
   });
 
+  test.describe('Global feed @articles', () => {
+  test('should show created article in global feed @smoke', async ({ authedPage, seededArticle }) => {
+    const homePage = new HomePage(authedPage);
+    await homePage.goto();
+
+    const articlePreview = homePage.getArticleByTitle(seededArticle.title);
+    await expect(articlePreview).toBeVisible();
+    await expect(articlePreview).toContainText(GLOBAL_TEST_USER.username);
+    await expect(articlePreview).toContainText(seededArticle.description);
+    await expect(articlePreview).toContainText(articlesData.validArticle.tagList[0]!);
+    });
+  });
+
   test('should create and then edit an article', async ({ authedPage, seededArticle }) => {
     const updated = articlesData.updatedArticle;
 
@@ -138,11 +152,12 @@ test.describe('Article CRUD @articles', () => {
     await deleteResponse;
 
     await homePage.waitForURL('/');
-    await expect(homePage.getArticleByTitle(seededArticle.title)).not.toBeVisible();
+    await authedPage.goto(`/article/${seededArticle.slug}`);
+    await expect(authedPage).toHaveURL('/');
   });
 
   test('should delete article with comment @articles', async ({ authedPage, seededArticle }) => {
-    test.fail(true, 'Known bug: articles with comments cannot be deleted — Foreign key constraint');
+    
     const comment = articlesData.comment;
     const homePage = new HomePage(authedPage);
 
@@ -171,7 +186,7 @@ test.describe('Article CRUD @articles', () => {
     /* After deletion should redirect to home — this is where the bug manifests */
     await homePage.waitForURL('/');
     await authedPage.goto(`/article/${seededArticle.slug}`);
-    await expect(articlePage.articleTitle).not.toBeVisible();
+    await expect(authedPage).toHaveURL('/');
 
     /*
      * NOTE: I intentionally do NOT remove the slug from seededArticle here.
@@ -217,12 +232,16 @@ test.describe('Article comments @articles', () => {
     const articlePage = new ArticlePage(authedPage);
 
     /* Add comment first */
+    const addCommentResponse = authedPage.waitForResponse(
+      (resp) => resp.url().includes('/api/trpc/comments.addCommentToArticle') && resp.status() === 200
+    );
     await articlePage.addComment(comment.body);
+    await addCommentResponse;
     await expect(articlePage.comments.filter({ hasText: comment.body })).toBeVisible();
 
     /* Delete comment */
     const deleteCommentResponse = authedPage.waitForResponse(
-      (resp) => resp.url().includes('/api/trpc/comments') && resp.status() === 200
+      (resp) => resp.url().includes('/api/trpc/comments.removeCommentFromArticle') && resp.status() === 200
     );
 
     await articlePage.deleteComment(comment.body);
