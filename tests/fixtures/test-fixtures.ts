@@ -20,6 +20,7 @@ import path from 'path';
 import { seedUser, deleteUser, deleteArticle, type SeedUserResult } from '../helpers/db';
 import { loginViaAPI, createArticleViaAPI, type ArticleResult } from '../helpers/api';
 import articlesData from './data/articles.json';
+import { env } from '../helpers/env';
 
 /* Path to the storageState file created by globalSetup */
 const STORAGE_STATE_PATH = path.resolve(
@@ -54,13 +55,33 @@ type CustomFixtures = {
   authedPage: Page;
   /** Unique user created in DB before the test, deleted after */
   testUser: TestUser;
+  /** Page authenticated as testUser — used in profile tests */
+  authedTestUserPage: Page;
   /**
    * Unique article created via API before the test, deleted after.
    * Uses a unique title (title + timestamp + parallelIndex) to avoid
    * slug collisions when tests run in parallel.
    */
   seededArticle: SeededArticle;
+  /**
+   * Unique profile update data generated per test.
+   * Uses timestamp + parallelIndex to avoid email/username collisions
+   * when profile tests run in parallel.
+   */
+  profileUpdate: ProfileUpdate;
 };
+
+/**
+ * ProfileUpdate — what the profileUpdate fixture provides to the test.
+ * Contains unique profile data generated per test to avoid
+ * email/username collisions when tests run in parallel.
+ */
+interface ProfileUpdate {
+  username: string;
+  bio: string;
+  email: string;
+  password: string;
+}
 
 /* ------------------------------------------------------------------ */
 /*  Extend the base test with custom fixtures                          */
@@ -172,6 +193,63 @@ export const test = base.extend<CustomFixtures>({
 
     /* Cleanup: delete the article after the test */
     await deleteArticle(created.slug);
+  },
+
+  /**
+   * authedTestUserPage fixture.
+   *
+   * Creates a browser context authenticated as testUser (not GLOBAL_TEST_USER).
+   * Used in profile tests where we need to modify user data without
+   * affecting the global test session.
+   *
+   * Depends on testUser fixture — testUser is created first, then we
+   * log in as that user and inject the token into a fresh browser context.
+   *
+   * Lifecycle:
+   *   1. Login as testUser via API to get JWT token
+   *   2. Create browser context with token in localStorage
+   *   3. yield page to the test
+   *   4. Close context after the test
+   */
+  authedTestUserPage: async ({ browser, testUser }, use) => {
+    const auth = await loginViaAPI({
+      email: testUser.email,
+      password: testUser.password,
+    });
+
+    const context = await browser.newContext({
+      storageState: {
+        cookies: [],
+        origins: [
+          {
+            origin: env.BASE_URL,
+            localStorage: [{ name: 'token', value: auth.token }],
+          },
+        ],
+      },
+    });
+
+    const page = await context.newPage();
+    await use(page);
+    await context.close();
+  },
+
+  /**
+ * profileUpdate fixture.
+ *
+ * Generates unique profile update data per test to avoid
+ * email/username collisions when tests run in parallel.
+ *
+ * Lifecycle: stateless — just generates data, no cleanup needed.
+ */
+profileUpdate: async ({}, use, testInfo) => {
+  const uniqueId = `${Date.now()}_w${testInfo.parallelIndex}`;
+  await use({
+    username: `UpdatedUser_${uniqueId}`,
+    bio: 'Test bio for profile update',
+    email: `updated_${uniqueId}@mail.com`,
+    password: '22222222',
+   });
   },
 });
 
