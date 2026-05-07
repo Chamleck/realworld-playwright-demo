@@ -19,6 +19,7 @@ export class ArticlePage extends BasePage {
   readonly favoriteButton: Locator;
   readonly followButton: Locator;
   readonly authorLink: Locator;
+  readonly articleMeta: Locator;
 
   constructor(page: Page) {
     super(page);
@@ -33,6 +34,7 @@ export class ArticlePage extends BasePage {
     this.favoriteButton = page.locator('.article-meta .btn-outline-primary, .article-meta .btn-primary').first();
     this.followButton = page.locator('.article-meta .btn-outline-secondary, .article-meta .btn-secondary').first();
     this.authorLink = page.locator('.article-meta').first().getByRole('link').first();
+    this.articleMeta = page.locator('.article-meta').first();
   }
 
   /* Get the slug from the current URL */

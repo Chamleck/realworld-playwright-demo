@@ -92,9 +92,7 @@ test.describe('Article CRUD @articles', () => {
 
     await expect(articlePage.articleTitle).toHaveText(article.title);
     await expect(articlePage.articleBody).toContainText(article.body);
-    await expect(authedPage.locator('.article-meta').first()).toContainText(
-      GLOBAL_TEST_USER.username
-    );
+    await expect(articlePage.articleMeta).toContainText(GLOBAL_TEST_USER.username);
   });
 
   test.describe('Global feed @articles', () => {
