@@ -30,13 +30,6 @@ export interface InvalidUserData extends UserData {
   description: string;
 }
 
-export interface ProfileUpdateData {
-  email: string;
-  username: string;
-  bio: string;
-  password: string;
-}
-
 export interface UsersFixture {
   /** Pre-seeded user from base.sqlite (matches .env TEST_USER_* credentials) */
   defaultUser: UserData;
@@ -44,8 +37,6 @@ export interface UsersFixture {
   validUsers: UserData[];
   /** Invalid user data for validation tests — each entry violates at least one rule */
   invalidUsers: InvalidUserData[];
-  /** Data for profile/settings update tests */
-  profileUpdate: ProfileUpdateData;
 }
 
 /* ------------------------------------------------------------------ */

@@ -21,6 +21,7 @@ import { seedUser, deleteUser, deleteArticle, type SeedUserResult } from '../hel
 import { loginViaAPI, createArticleViaAPI, type ArticleResult } from '../helpers/api';
 import articlesData from './data/articles.json';
 import { env } from '../helpers/env';
+import { GLOBAL_TEST_USER } from '../../globalSetup';
 
 /* Path to the storageState file created by globalSetup */
 const STORAGE_STATE_PATH = path.resolve(
@@ -42,9 +43,28 @@ interface TestUser extends SeedUserResult {
 
 /**
  * SeededArticle — what the seededArticle fixture provides to the test.
- * Includes article fields returned from the API.
+ * Fields are listed explicitly so the fixture's contract is decoupled
+ * from any helper return type — if createArticleViaAPI ever returns extra
+ * fields, the fixture surface stays controlled.
  */
-interface SeededArticle extends ArticleResult {}
+interface SeededArticle {
+  slug: string;
+  title: string;
+  description: string;
+  body: string;
+}
+
+/**
+ * ProfileUpdate — what the profileUpdate fixture provides to the test.
+ * Contains unique profile data generated per test to avoid
+ * email/username collisions when tests run in parallel.
+ */
+interface ProfileUpdate {
+  username: string;
+  bio: string;
+  email: string;
+  password: string;
+}
 
 /**
  * Declare the shape of our custom fixtures.
@@ -71,18 +91,6 @@ type CustomFixtures = {
   profileUpdate: ProfileUpdate;
 };
 
-/**
- * ProfileUpdate — what the profileUpdate fixture provides to the test.
- * Contains unique profile data generated per test to avoid
- * email/username collisions when tests run in parallel.
- */
-interface ProfileUpdate {
-  username: string;
-  bio: string;
-  email: string;
-  password: string;
-}
-
 /* ------------------------------------------------------------------ */
 /*  Extend the base test with custom fixtures                          */
 /* ------------------------------------------------------------------ */
@@ -107,9 +115,11 @@ export const test = base.extend<CustomFixtures>({
     });
     const page = await context.newPage();
 
-    await use(page);
-
-    await context.close();
+    try {
+      await use(page);
+    } finally {
+      await context.close();
+    }
   },
 
   /**
@@ -138,9 +148,11 @@ export const test = base.extend<CustomFixtures>({
       password,
     });
 
-    await use({ ...seeded, password });
-
-    await deleteUser(seeded.email);
+    try {
+      await use({ ...seeded, password });
+    } finally {
+      await deleteUser(seeded.email);
+    }
   },
 
   /**
@@ -175,7 +187,6 @@ export const test = base.extend<CustomFixtures>({
     const article = articlesData.validArticle;
 
     /* Login as GLOBAL_TEST_USER to get a fresh JWT token for the API call */
-    const { GLOBAL_TEST_USER } = await import('../../globalSetup');
     const auth = await loginViaAPI({
       email: GLOBAL_TEST_USER.email,
       password: GLOBAL_TEST_USER.password,
@@ -189,10 +200,12 @@ export const test = base.extend<CustomFixtures>({
       tagList: article.tagList,
     });
 
-    await use(created);
-
-    /* Cleanup: delete the article after the test */
-    await deleteArticle(created.slug);
+    try {
+      await use(created);
+    } finally {
+      /* Cleanup: delete the article after the test */
+      await deleteArticle(created.slug);
+    }
   },
 
   /**
@@ -230,8 +243,11 @@ export const test = base.extend<CustomFixtures>({
     });
 
     const page = await context.newPage();
-    await use(page);
-    await context.close();
+    try {
+      await use(page);
+    } finally {
+      await context.close();
+    }
   },
 
   /**

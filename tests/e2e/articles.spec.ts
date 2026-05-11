@@ -95,12 +95,16 @@ test.describe('Article CRUD @articles', () => {
     await expect(articlePage.articleMeta).toContainText(GLOBAL_TEST_USER.username);
   });
 
+/* ================================================================== */
+/*  Global feed                                                        */
+/* ================================================================== */
+
   test.describe('Global feed @articles', () => {
   test('should show created article in global feed @smoke', async ({ authedPage, seededArticle }) => {
     const homePage = new HomePage(authedPage);
     await homePage.goto();
 
-    const articlePreview = homePage.getArticleByTitle(seededArticle.title);
+    const articlePreview = await homePage.findArticleAcrossPages(seededArticle.title);
     await expect(articlePreview).toBeVisible();
     await expect(articlePreview).toContainText(GLOBAL_TEST_USER.username);
     await expect(articlePreview).toContainText(seededArticle.description);
@@ -111,12 +115,12 @@ test.describe('Article CRUD @articles', () => {
   test('should create and then edit an article', async ({ authedPage, seededArticle }) => {
     const updated = articlesData.updatedArticle;
 
-    /* Navigate to the seeded article page */
     const homePage = new HomePage(authedPage);
-    await authedPage.goto(`/article/${seededArticle.slug}`);
-
     const articlePage = new ArticlePage(authedPage);
     const createPage = new CreateArticlePage(authedPage);
+
+    /* Navigate to the seeded article page */
+    await authedPage.goto(`/article/${seededArticle.slug}`);
 
     const editResponse = authedPage.waitForResponse(
       (resp) => resp.url().includes('/api/trpc/articles.updateArticle') && resp.status() === 200
@@ -136,11 +140,10 @@ test.describe('Article CRUD @articles', () => {
 
   test('should delete an article', async ({ authedPage, seededArticle }) => {
     const homePage = new HomePage(authedPage);
+    const articlePage = new ArticlePage(authedPage);
 
     /* Navigate directly to the seeded article */
     await authedPage.goto(`/article/${seededArticle.slug}`);
-
-    const articlePage = new ArticlePage(authedPage);
 
     const deleteResponse = authedPage.waitForResponse(
       (resp) => resp.url().includes('/api/trpc/articles.deleteArticle') && resp.status() === 200
@@ -158,10 +161,9 @@ test.describe('Article CRUD @articles', () => {
     
     const comment = articlesData.comment;
     const homePage = new HomePage(authedPage);
+    const articlePage = new ArticlePage(authedPage);
 
     await authedPage.goto(`/article/${seededArticle.slug}`);
-
-    const articlePage = new ArticlePage(authedPage);
 
     /* Add comment */
     const commentResponse = authedPage.waitForResponse(
@@ -207,10 +209,9 @@ test.describe('Article CRUD @articles', () => {
 test.describe('Article comments @articles', () => {
   test('should add a comment to an article', async ({ authedPage, seededArticle }) => {
     const comment = articlesData.comment;
+    const articlePage = new ArticlePage(authedPage);
 
     await authedPage.goto(`/article/${seededArticle.slug}`);
-
-    const articlePage = new ArticlePage(authedPage);
 
     const commentResponse = authedPage.waitForResponse(
       (resp) => resp.url().includes('/api/trpc/comments.addCommentToArticle') && resp.status() === 200
@@ -224,10 +225,9 @@ test.describe('Article comments @articles', () => {
 
   test('should delete a comment from an article', async ({ authedPage, seededArticle }) => {
     const comment = articlesData.comment;
+    const articlePage = new ArticlePage(authedPage);
 
     await authedPage.goto(`/article/${seededArticle.slug}`);
-
-    const articlePage = new ArticlePage(authedPage);
 
     /* Add comment first */
     const addCommentResponse = authedPage.waitForResponse(
@@ -283,18 +283,3 @@ test.describe('Article favorites @articles', () => {
   });
 });
 
-/* ================================================================== */
-/*  Global feed                                                        */
-/* ================================================================== */
-
-test.describe('Global feed @articles', () => {
-  test('should show created article in global feed @smoke', async ({ authedPage, seededArticle }) => {
-    const homePage = new HomePage(authedPage);
-    await homePage.goto();
-
-    const articlePreview = homePage.getArticleByTitle(seededArticle.title);
-    await expect(articlePreview).toBeVisible();
-    await expect(articlePreview).toContainText(GLOBAL_TEST_USER.username);
-    await expect(articlePreview).toContainText(seededArticle.description);
-  });
-});

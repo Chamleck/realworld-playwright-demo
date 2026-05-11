@@ -41,11 +41,5 @@
       "username": "",
       "password": "ValidPass123"
     }
-  ],
-  "profileUpdate": {
-    "email": "updated@mail.com",
-    "username": "UpdatedUser",
-    "bio": "Test bio for profile update",
-    "password": "22222222"
-  }
+  ]
 }
