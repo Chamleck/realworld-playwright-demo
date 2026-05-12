@@ -106,11 +106,12 @@ realworld-playwright-demo/
 
 ### Naming
 
-- Spec files: `<feature>.spec.ts` (e.g. `auth.spec.ts`, `articles.spec.ts`)
-- Page classes: `PascalCase` + `Page` suffix (`LoginPage`, `ArticlePage`)
-- Custom fixtures: `camelCase` in `test-fixtures.ts`
-- JSON fixtures: `camelCase` filenames
-- Tags in tests: `@tagname` in test title (e.g. `@smoke`, `@auth`, `@articles`, `@profile`)
+- Spec files: `<feature>.spec.ts` (e.g. `auth.spec.ts`, `articles.spec.ts`).
+- Page classes: `PascalCase` + `Page` suffix (`LoginPage`, `ArticlePage`).
+- Custom fixtures: `camelCase` in `test-fixtures.ts`.
+- JSON fixtures: `camelCase` filenames.
+- Tags in tests: `@tagname` in test title (e.g. `@smoke`, `@auth`, `@articles`, `@profile`).
+- Parallel worker prefix: all unique test data includes `_w${testInfo.parallelIndex}` suffix (e.g. `test-article-1778572618767_w1`). In logs, `_w0`, `_w1`, `_w2`... identify which worker created each resource — useful for debugging parallel runs.
 
 ### Test architecture
 
@@ -119,6 +120,7 @@ realworld-playwright-demo/
 - **Page Objects** (`tests/pages/`) — one class per page, receives `page: Page` via constructor. All inherit from `BasePage`.
 - **Specs** (`tests/e2e/`) — test files that import fixtures and Page Objects.
 - **Data** (`tests/fixtures/data/`) — JSON test data, typed via `types.ts`.
+- **Two article creation strategies**: `createArticleViaUI` helper is used ONLY in the test that verifies the UI creation flow; all other tests where an article is a precondition use the `seededArticle` fixture (API-based, faster, parallel-safe).
 
 ### Auth strategy
 
@@ -234,26 +236,50 @@ Done. Fixtures use `try/finally` for cleanup. PO declarations unified to top-of-
 
 ### M4.2 — Allure reporter integration
 
-Install `allure-playwright` + `allure-commandline`, wire reporter in `playwright.config.ts`. The npm scripts and CI workflow steps already exist as scaffolding — they become functional once the package lands. Consider whether `step()` decorators in Page Object methods earn their cost vs trace + screenshots alone.
+Install `allure-playwright` + `allure-commandline`, wire reporter in `playwright.config.ts`.
+The npm scripts and CI steps are already scaffolded.
+
+Trace attachment for failed tests: add `testInfo.attach('trace', { path: traceFile })`
+in the `authedPage` fixture teardown so trace.zip is embedded directly in the Allure
+report next to the failed test — no digging through separate CI artifacts.
+
+Screenshots on failure are already handled by Playwright's built-in screenshot config.
 
 ### M4.3 — CI hardening
 
-Make `e2e.yml` and `nightly.yml` actually green end-to-end with Allure in place. Add `tsc --noEmit` (via a tests-only `tsconfig.test.json` to dodge the @trpc/server v10 source type-check issue) and `npm run lint` gates.
+- Make `e2e.yml` (PR pipeline, Chromium) and `nightly.yml` (all 4 browsers, 2 AM UTC)
+  fully green end-to-end with Allure in place
+- Docker: run tests inside a container for reproducible environments across machines
+- Parallel sharding: confirm worker count optimal for CI runners
+- Upload trace.zip + screenshots as GitHub Actions artifacts on failure
+- Add `tsc --noEmit` (via `tsconfig.test.json` to dodge @trpc/server v10 issue)
+  and `npm run lint` gates
+- Multi-environment via prefixed secrets: GitHub Environments are paid for private
+  repos — instead use prefixed secrets in shared space (`STAGING_JWT_SECRET`,
+  `PROD_JWT_SECRET`, `STAGING_TEST_USER_EMAIL` etc.) with a `workflow_dispatch`
+  `environment` input (`dev / staging / production`); workflow reads the correct
+  prefix and substitutes the right secrets. Add `environment` input alongside the
+  existing `grep` input in `e2e.yml`.
 
 ### M4.4 + M4.5 — Allure history + GitHub Pages publish
 
-Combined into one PR — both push to `gh-pages` and share the same `peaceiris/actions-gh-pages` step. History gives flake trends across runs; Pages exposes the latest report publicly.
+Combined into one PR. Auto-publish Allure HTML report to `gh-pages` branch after
+every CI run — live at `Chamleck.github.io/realworld-playwright-demo`. Preserve
+allure-history between runs for trend graphs (pass/fail over time, flakiness detection).
+Add categories for known issues (e.g. "Foreign key bug" for the FK constraint test).
 
 ### M4.6 — Documentation polish
 
-Final README with status badges, architecture diagram, quick start, "how to evaluate" section for recruiters.
+README with CI status badges, Playwright version badge, link to live Allure report,
+architecture diagram, quick start guide, "how to evaluate" section for recruiters.
 
-### Backlog (post-M4)
+## M5 — Optional Enhancements (not planned for now)
 
-- Multi-environment via prefixed secrets (`STAGING_*`, `PROD_*`) with `workflow_dispatch` selector. Deferred until there's a second deploy target.
-- Allure trace attachment via `testInfo.attach()` in `authedPage` teardown.
-- npm audit pass — document which vulnerabilities are in dev-only transitive deps vs which need action.
-- Pre-commit hook (husky + lint-staged) for local lint/typecheck before push.
+- Multi-environment support (dev/staging via workflow_dispatch) — deferred until a second deploy target exists
+- Project Dependencies as alternative to globalSetup — mention in README as an architectural alternative
+- Flake stabilization analysis — after 10+ CI runs
+- API tests layer alongside E2E
+- Mobile viewport tests
 
 ---
 
