@@ -27,13 +27,13 @@ The system under test (SUT) is a [RealWorld](https://github.com/gothinkster/real
 - **Next.js 14** (pages router)
 - **tRPC** + `trpc-openapi` (adds a REST layer over tRPC for OpenAPI exposure)
 - **Prisma ORM** + **SQLite** (file-based DB, zero external infrastructure)
-- **JWT** auth — token stored in `sessionStorage` under key `token`
+- **JWT** auth — token stored in `localStorage` under key `token`
 - **TypeScript** strict mode, **Tailwind CSS**
 
 ### Test framework
 
 - **Playwright 1.59** + **TypeScript**
-- **Allure** reporter (`allure-playwright` + `allure-commandline`)
+- **Allure** reporter (`allure-playwright` + `allure-commandline`) — *planned for M4.2; npm scripts and CI steps are scaffolded but the reporter package is not yet installed*
 - **Playwright Trace Viewer** (built-in, trace on first retry)
 - **GitHub Actions** — PR pipeline (Chromium) + nightly regression (all browsers)
 - **dotenv** + **zod** for typed, validated env loading
@@ -45,8 +45,8 @@ The system under test (SUT) is a [RealWorld](https://github.com/gothinkster/real
 
 ```
 main                         ← application under test only (no tests)
- └── setup/playwright           ← Playwright infrastructure, config, CI, reporting  [YOU ARE HERE]
-      └── tests/e2e-suite         ← actual spec files + Page Objects
+ └── setup/playwright           ← Playwright infrastructure, config, CI, reporting (merged)
+      └── tests/e2e-suite         ← actual spec files + Page Objects  [YOU ARE HERE]
            └── dev                   ← stable integration, polish, final docs
 ```
 
@@ -68,18 +68,18 @@ realworld-playwright-demo/
 ├── tests/
 │   ├── auth/
 │   │   └── .storage-state.json    # Saved auth state (gitignored, created by globalSetup)
-│   ├── e2e/                       # Spec files — one per feature area
+│   ├── e2e/                       # Spec files: auth.spec.ts, articles.spec.ts, profile.spec.ts
 │   ├── fixtures/
 │   │   ├── data/
 │   │   │   ├── articles.json      # Test data: articles, comments
-│   │   │   ├── users.json         # Test data: valid/invalid users, profile updates
+│   │   │   ├── users.json         # Test data: valid/invalid users
 │   │   │   └── types.ts           # TypeScript interfaces for JSON fixtures
-│   │   └── test-fixtures.ts       # Custom fixtures: authedPage, testUser
+│   │   └── test-fixtures.ts       # Custom fixtures: authedPage, testUser, seededArticle, authedTestUserPage, profileUpdate
 │   ├── helpers/
-│   │   ├── api.ts                 # tRPC helpers: loginViaAPI, registerViaAPI
+│   │   ├── api.ts                 # tRPC helpers: loginViaAPI, registerViaAPI, createArticleViaAPI
 │   │   ├── db.ts                  # Prisma helpers: seedUser, deleteUser, deleteArticle
 │   │   └── env.ts                 # Typed env loader with zod validation
-│   └── pages/                     # Page Object Models (to be added in tests/e2e-suite)
+│   └── pages/                     # Page Object Models: BasePage + 7 page classes (+ index.ts barrel)
 ├── globalSetup.ts                 # Runs before all tests: reset DB, save storageState
 ├── globalTeardown.ts              # Runs after all tests: disconnect Prisma
 ├── playwright.config.ts           # 4 browser projects, webServer, reporters
@@ -116,15 +116,19 @@ realworld-playwright-demo/
 
 - **Helpers** (`tests/helpers/`) — low-level functions (DB operations, API calls, env). No Playwright dependency.
 - **Fixtures** (`tests/fixtures/test-fixtures.ts`) — high-level Playwright fixtures that use helpers. Manage lifecycle (setup before test, teardown after).
-- **Page Objects** (`tests/pages/`) — one class per page, receives `page: Page` via constructor.
+- **Page Objects** (`tests/pages/`) — one class per page, receives `page: Page` via constructor. All inherit from `BasePage`.
 - **Specs** (`tests/e2e/`) — test files that import fixtures and Page Objects.
 - **Data** (`tests/fixtures/data/`) — JSON test data, typed via `types.ts`.
 
 ### Auth strategy
 
-- `globalSetup` logs in pre-seeded user (jake@jake.jake) via tRPC API → saves storageState.
-- `authedPage` fixture loads storageState → page starts logged in.
-- `testUser` fixture creates unique user in DB → provides to test → deletes after.
+- `globalSetup` logs in pre-seeded user (`jake@jake.jake`) via tRPC API → saves storageState to `tests/auth/.storage-state.json`.
+- `authedPage` fixture loads storageState → page starts logged in as the pre-seeded user.
+- `testUser` fixture creates a unique user in DB via Prisma → provides to test → deletes after.
+- `authedTestUserPage` depends on `testUser`: logs in as that user via API, injects JWT into `localStorage` via a fresh browser context. Used by tests that mutate user-specific state (profile updates) without polluting the pre-seeded user.
+- `seededArticle` creates an article via tRPC API as the pre-seeded user → provides slug/title/description/body to test → deletes after.
+- `profileUpdate` provides unique profile data (username/email/bio/password) per test → parallel-safe via `Date.now() + testInfo.parallelIndex`. Stateless — no cleanup needed.
+- All cleanup fixtures wrap `use()` in `try/finally` so teardown runs even when the test throws.
 - Tests that don't need auth use plain `page` (no storageState).
 
 ### Database strategy
@@ -148,6 +152,7 @@ Defined in `.env.example`, validated by `tests/helpers/env.ts` via zod:
 | `TEST_DATABASE_URL` | Test database | `file:./test.sqlite` |
 | `TEST_USER_EMAIL` | Pre-seeded user email | `jake@jake.jake` |
 | `TEST_USER_PASSWORD` | Pre-seeded user password | `jakejake` |
+| `TEST_USER_USERNAME` | Pre-seeded user username | `globalTestUser` |
 
 New variables must be added to: `.env.example` + `tests/helpers/env.ts` + GitHub Secrets (if sensitive) + workflow env (if needed in CI).
 
@@ -199,6 +204,7 @@ New variables must be added to: `.env.example` + `tests/helpers/env.ts` + GitHub
 | `JWT_SECRET` | JWT token signing in test environment |
 | `TEST_USER_EMAIL` | Pre-seeded user login |
 | `TEST_USER_PASSWORD` | Pre-seeded user login |
+| `TEST_USER_USERNAME` | Pre-seeded user (used by API helpers and fixtures) |
 
 ---
 
@@ -218,30 +224,83 @@ Reference for writing test data (`tests/fixtures/data/`):
 
 ---
 
-## Planned improvements (M4 — dev branch)
+## M4 plan — `tests/e2e-suite` → `dev`
 
-These are documented decisions to be implemented during the final polish phase:
+Current state: 22 passing tests + 1 expected failure (`should delete article with comment` reveals a pre-existing FK constraint bug in the app — kept as a documented bug-revealing test).
 
-### P1 — Multi-environment support via secret prefixes
+### M4.1 — Code quality pass ✅
 
-GitHub Environments are paid for private repos. Instead, use prefixed secrets in the shared space (`STAGING_JWT_SECRET`, `PROD_JWT_SECRET`) with `workflow_dispatch` environment selector. Workflows will substitute the correct prefix based on the chosen environment. Commented-out templates will be added to `.env.example` and workflow files.
+Done. Fixtures use `try/finally` for cleanup. PO declarations unified to top-of-test in `articles.spec.ts`. `SeededArticle` interface made explicit. Dead `profileUpdate` field removed from JSON fixtures. `GLOBAL_TEST_USER` import moved to top-level. `HomePage.findArticleAcrossPages()` added to handle the paginated global feed (see "Known quirks" below).
 
-### P2 — Allure trace attachment for failed tests
+### M4.2 — Allure reporter integration
 
-Add `testInfo.attach('trace', { path: traceFile })` in the `authedPage` fixture teardown. When a test fails, the trace file will be embedded in the Allure report — clickable download button next to the failed test, no need to dig through separate artifacts.
+Install `allure-playwright` + `allure-commandline`, wire reporter in `playwright.config.ts`. The npm scripts and CI workflow steps already exist as scaffolding — they become functional once the package lands. Consider whether `step()` decorators in Page Object methods earn their cost vs trace + screenshots alone.
 
-### P3 — Flake stabilization
+### M4.3 — CI hardening
 
-After all specs are written (M3), analyze test stability across 10+ CI runs. Identify and fix flaky tests: add explicit waits, improve selectors, adjust timeouts, isolate test data better.
+Make `e2e.yml` and `nightly.yml` actually green end-to-end with Allure in place. Add `tsc --noEmit` (via a tests-only `tsconfig.test.json` to dodge the @trpc/server v10 source type-check issue) and `npm run lint` gates.
 
-### P4 — Dependency audit
+### M4.4 + M4.5 — Allure history + GitHub Pages publish
 
-One deliberate commit addressing npm audit findings. Document which vulnerabilities are in dev-only transitive dependencies (safe to ignore) vs which need action.
+Combined into one PR — both push to `gh-pages` and share the same `peaceiris/actions-gh-pages` step. History gives flake trends across runs; Pages exposes the latest report publicly.
 
-### P5 — README with CI badges
+### M4.6 — Documentation polish
 
-Final README with status badges (CI passing, Playwright version), architecture diagram, quick start guide, full command reference, and "How to evaluate this project" section for recruiters.
+Final README with status badges, architecture diagram, quick start, "how to evaluate" section for recruiters.
 
+### Backlog (post-M4)
+
+- Multi-environment via prefixed secrets (`STAGING_*`, `PROD_*`) with `workflow_dispatch` selector. Deferred until there's a second deploy target.
+- Allure trace attachment via `testInfo.attach()` in `authedPage` teardown.
+- npm audit pass — document which vulnerabilities are in dev-only transitive deps vs which need action.
+- Pre-commit hook (husky + lint-staged) for local lint/typecheck before push.
+
+---
+
+## Known quirks / lessons learned
+
+### `.article-preview` is overloaded by `ArticleListTabs.tsx`
+
+The CSS class `.article-preview` is reused inside the feed component for three different states:
+
+- The **loading-state spinner**: `<div className="article-preview"><Spinner /></div>`
+- The **empty-state message**: `<div className="article-preview">No articles are here... yet.</div>`
+- The **actual article cards**, rendered via `ArticleListEntry` — these are the only ones that contain an `<h1>` with the article title.
+
+When asserting on cards or waiting for the feed to be ready, scope to `.article-preview` that has an `<h1>` inside — otherwise the spinner placeholder matches first and any subsequent `count()` / lookup runs before real articles render.
+
+The robust pattern used by `HomePage.findArticleAcrossPages()`:
+
+```ts
+const realArticleCard = this.articlePreviews
+  .filter({ has: this.page.locator('h1') })
+  .first();
+await realArticleCard.waitFor({ state: 'attached' });
+```
+
+### Global feed pagination with parallel workers
+
+`seededArticle` creates one article per test that requests it. With `fullyParallel: true`
+and N CPU cores, up to N+1 freshly created articles coexist during a run (N fixtures +
+1–2 UI-created articles). The global feed shows 5 per page sorted by `createdAt DESC` —
+so the under-test article can land on page 2+.
+
+`should show created article in global feed` uses `HomePage.findArticleAcrossPages(title)`.
+
+**Why not a simple forward walk (page 1 → 2 → 3 → ... → N):**
+While we navigate forward, other workers finish their tests and delete their seededArticles.
+Each deletion shifts our article one position backward (toward page 1). We perpetually chase
+it in the wrong direction and can traverse 50+ pages without ever finding it — confirmed
+in a trace where the method reached pages 50–51 without a match.
+
+**Solution — repeated passes over pages 1–4:**
+With up to ~16 parallel articles ahead at peak, our article lands at most on page 4.
+The method checks pages 1, 2, 3, 4 — then repeats the full pass up to 5 times.
+Even if the article shifted back to page 1 while we were on page 3, the next pass
+catches it. Worst-case time: 5 passes × 4 pages × ~300 ms = ~6 s.
+
+Navigation is URL-based (`/?offset=N`) rather than clicking pagination links — avoids
+stale-locator issues when the DOM updates between page transitions.
 ---
 
 ## Notes for Claude Code

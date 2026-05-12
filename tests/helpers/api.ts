@@ -42,7 +42,7 @@ export interface RegisterInput {
  * Sends the same request the UI would send when submitting the login form,
  * but skips the browser entirely — just an HTTP POST.
  *
- * Returns the JWT token which can be injected into sessionStorage
+ * Returns the JWT token which can be injected into localStorage
  * to make the browser "already logged in".
  *
  * The tRPC batch format wraps the payload in { 0: { json: { ... } } }

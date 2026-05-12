@@ -13,8 +13,8 @@ See [APPLICATION.md](./APPLICATION.md) for the app architecture.
 | Branch | What's in it |
 |---|---|
 | `main` | Application under test only — no E2E framework. |
-| `setup/playwright` | Playwright infrastructure: config, fixtures, helpers, env, Allure, GitHub Actions. **You are here.** |
-| `tests/e2e-suite` | Actual specs (auth, articles, profile) using the framework. |
+| `setup/playwright` | Playwright infrastructure: config, fixtures, helpers, env, Allure, GitHub Actions. |
+| `tests/e2e-suite` | Actual specs (auth, articles, profile) using the framework. **You are here.** |
 | `dev` | Stable integration branch. Final polish and documentation. |
 
 Each branch opens a PR into its parent — the PRs show the evolution of the project.
@@ -31,7 +31,7 @@ Each branch opens a PR into its parent — the PRs show the evolution of the pro
 ```bash
 git clone https://github.com/Chamleck/realworld-playwright-demo.git
 cd realworld-playwright-demo
-git checkout setup/playwright
+git checkout tests/e2e-suite
 npm install
 npx playwright install
 npm test
@@ -43,6 +43,7 @@ npm test
 
 | Command | Purpose |
 |---|---|
+| `npm run dev` | Start Next.js dev server |
 | `npm test` | All tests, all browsers, headless |
 | `npm run test:chromium` | Chromium only |
 | `npm run test:firefox` | Firefox only |
@@ -66,16 +67,19 @@ npm test
 ```
 Specs (tests/e2e/*.spec.ts)
   ├── use Fixtures (tests/fixtures/test-fixtures.ts)
-  │     ├── authedPage — browser with pre-loaded auth session
-  │     └── testUser — unique user seeded in DB, cleaned up after test
+  │     ├── authedPage         — browser with pre-loaded auth session (global user)
+  │     ├── testUser           — unique user seeded in DB, cleaned up after test
+  │     ├── authedTestUserPage — browser authenticated as testUser (for profile tests)
+  │     ├── seededArticle      — article created via API, cleaned up after test
+  │     └── profileUpdate      — unique profile data generated per test (parallel-safe)
   ├── use Page Objects (tests/pages/*Page.ts)
-  │     └── encapsulate selectors and page interactions
+  │     └── encapsulate selectors and page interactions (BasePage + 6 page classes)
   └── use Test Data (tests/fixtures/data/*.json)
         └── typed JSON templates for users, articles, comments
 
 Fixtures call Helpers (tests/helpers/)
-  ├── db.ts — Prisma: seedUser, deleteUser, deleteArticle
-  ├── api.ts — tRPC: loginViaAPI, registerViaAPI
+  ├── db.ts  — Prisma: seedUser, deleteUser, deleteArticle
+  ├── api.ts — tRPC: loginViaAPI, registerViaAPI, createArticleViaAPI
   └── env.ts — zod-validated environment variables
 ```
 
@@ -97,7 +101,10 @@ Fixtures call Helpers (tests/helpers/)
 
 ### Auth strategy
 
-`globalSetup` logs in once via tRPC API → saves session to `storageState.json`. Tests use `authedPage` fixture (logged in) or plain `page` (anonymous). No UI login in setup — fast and stable.
+`globalSetup` logs in once via tRPC API → saves session to `storageState.json`. Tests use:
+- `authedPage` — page pre-loaded with the global user's session (fast, no UI login)
+- `authedTestUserPage` — page authenticated as a freshly created `testUser` via API (for profile tests that mutate user data)
+- plain `page` — anonymous browser context (no auth)
 
 ### Database isolation
 
@@ -114,6 +121,7 @@ BASE_URL="http://localhost:3000"
 TEST_DATABASE_URL="file:./test.sqlite"
 TEST_USER_EMAIL="jake@jake.jake"
 TEST_USER_PASSWORD="jakejake"
+TEST_USER_USERNAME="globalTestUser"
 ```
 
 All variables are validated at startup via zod — missing or malformed values fail immediately with a clear error.

@@ -60,43 +60,67 @@ export class HomePage extends BasePage {
   const preview = this.getArticleByTitle(title);
 
   /*
-   * The class `.article-preview` is reused by the feed for three things:
-   *   - the loading-state spinner
-   *   - the empty-state message "No articles are here... yet."
-   *   - the actual article cards (only these contain an <h1> with the title)
-   * We must wait for a card with an <h1>, otherwise the spinner element matches
-   * `.article-preview` immediately and we end up checking count() against the
-   * loading placeholder before the real articles render.
+   * The class `.article-preview` is reused by ArticleListTabs for three states:
+   *   - loading spinner  → <div class="article-preview"><Spinner /></div>
+   *   - empty state      → <div class="article-preview">No articles here...</div>
+   *   - real article card → only these contain an <h1> with the title
+   *
+   * Waiting for any `.article-preview` would fire on the spinner before real
+   * articles render. We wait for one that contains an <h1> instead.
    */
-  const realArticleCard = this.articlePreviews.filter({ has: this.page.locator('h1') }).first();
-  // Articles load async via tRPC — wait for at least one to appear in DOM
-  // before checking for the specific one (count() doesn't retry)
-  await realArticleCard.waitFor({ state: 'attached', timeout: 10_000 });
+  const realArticleCard = this.articlePreviews
+    .filter({ has: this.page.locator('h1') })
+    .first();
 
-  if (await preview.count() > 0) return preview;
+  /*
+   * Why we search pages 1–4 in repeated passes instead of walking forward:
+   *
+   * In a parallel run each worker's seededArticle fixture creates one article.
+   * With up to 14 workers + 2 UI-created articles = ~16 articles ahead of ours
+   * at peak → our article lands at most on page 4 (positions 0–4 = page 1,
+   * 5–9 = page 2, 10–14 = page 3, 15–19 = page 4).
+   *
+   * The naive forward walk (1 → 2 → 3 → ... → N) has a fatal race condition:
+   * while we navigate forward, other workers finish their tests and delete their
+   * seededArticles. Each deletion shifts our article one position backward
+   * (toward page 1). We perpetually chase it in the wrong direction and can
+   * traverse 50+ pages without ever finding it.
+   *
+   * Repeating the 1–4 range up to PASSES times breaks the race: even if the
+   * article shifted backward to page 1 while we were on page 3, the next pass
+   * starts from page 1 again and catches it.
+   *
+   * Worst-case time: PASSES × SEARCH_PAGES × ~300 ms/page ≈ 6 s.
+   */
+  const SEARCH_PAGES = [1, 2, 3, 4];
+  const PASSES = 5;
 
-  // Collect all page numbers from pagination (excludes '...' — rendered as <span>, not <a>)
-  const pageTexts = await this.paginationLinks.allTextContents();
-  const pageNumbers = pageTexts
-    .map(t => parseInt(t.trim()))
-    .filter(n => !isNaN(n))
-    .sort((a, b) => a - b);
+  for (let pass = 0; pass < PASSES; pass++) {
+    for (const pageNum of SEARCH_PAGES) {
+      const responsePromise = this.page.waitForResponse(
+        resp =>
+          resp.url().includes('/api/trpc/articles.getArticles') &&
+          resp.status() === 200,
+      );
 
-  for (const pageNum of pageNumbers) {
-    const responsePromise = this.page.waitForResponse(
-      resp => resp.url().includes('/api/trpc/articles.getArticles') && resp.status() === 200
-    );
-    await this.page.goto(`/?offset=${pageNum}`);
-    await responsePromise;
+      /*
+       * Navigate via URL rather than clicking pagination links — avoids stale
+       * locator issues when the DOM updates between pages. Page 1 uses '/'
+       * (no param) so the Pagination component renders its default active state.
+       */
+      await this.page.goto(pageNum === 1 ? '/' : `/?offset=${pageNum}`);
+      await responsePromise;
+      await realArticleCard.waitFor({ state: 'attached', timeout: 10_000 });
 
-    // Same wait — for a real article card, not the spinner placeholder
-    await realArticleCard.waitFor({ state: 'attached', timeout: 10_000 });
-
-    if (await preview.count() > 0) return preview;
+      if (await preview.count() > 0) return preview;
+    }
   }
 
-  // Article not found on any page — return locator anyway so toBeVisible() fails with a
-  // meaningful Playwright error message showing which title was expected
+  /*
+   * Article not found after all passes — return the locator anyway so the
+   * caller's expect().toBeVisible() fails with a meaningful Playwright error
+   * that shows the expected title.
+   */
   return preview;
   }
 }
