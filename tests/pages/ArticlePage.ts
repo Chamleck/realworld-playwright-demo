@@ -4,7 +4,7 @@
  * Displays article content, comments, favorite/follow buttons, and edit/delete controls.
  */
 
-import { type Page, type Locator } from '@playwright/test';
+import { type Page, type Locator, test } from '@playwright/test';
 import { BasePage } from './BasePage';
 
 export class ArticlePage extends BasePage {
@@ -46,35 +46,46 @@ export class ArticlePage extends BasePage {
 
   /* Add a comment to the article */
   async addComment(text: string) {
-    await this.commentInput.fill(text);
-    await this.postCommentButton.click();
+    await test.step('Add comment', async () => {
+      await this.commentInput.fill(text);
+      await this.postCommentButton.click();
+    });
   }
 
   /* Delete a comment by its text content */
   async deleteComment(text: string) {
-    const comment = this.comments.filter({ hasText: text });
-    await comment.locator('i.ion-trash-a').click();
+    await test.step(`Delete comment: ${text}`, async () => {
+      const comment = this.comments.filter({ hasText: text });
+      await comment.locator('i.ion-trash-a').click();
+    });
   }
 
   /* Click the favorite button (toggle) */
   async toggleFavorite() {
-    await this.favoriteButton.click();
+    await test.step('Toggle favorite', async () => {
+      await this.favoriteButton.click();
+    });
   }
 
   /* Click the follow button (toggle) */
   async toggleFollow() {
-    await this.followButton.click();
+    await test.step('Toggle follow', async () => {
+      await this.followButton.click();
+    });
   }
 
   /* Click Edit Article — navigates to /editor/[slug] */
   async clickEdit() {
-    await this.editButton.first().click();
+    await test.step('Click Edit Article', async () => {
+      await this.editButton.first().click();
+    });
   }
 
   /* Click Delete Article — shows confirmation dialog */
   async clickDelete() {
-    /* The app uses window.confirm() — Playwright auto-accepts dialogs by default */
-    this.page.once('dialog', dialog => dialog.accept());
-    await this.deleteButton.first().click();
+    await test.step('Click Delete Article', async () => {
+      this.page.once('dialog', dialog => dialog.accept());
+      await this.deleteButton.first().click();
+    });
   }
 }

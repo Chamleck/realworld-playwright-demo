@@ -104,20 +104,55 @@ export const test = base.extend<CustomFixtures>({
    * then creates a page in that context. The page starts "logged in"
    * because localStorage already has the JWT token.
    *
+   * Trace is started manually on the context so we can attach trace.zip
+   * directly into the Allure report on failure — no digging through
+   * separate CI artifacts.
+   *
    * Lifecycle:
    *   1. Create context with storageState → page is authenticated
-   *   2. yield page to the test
-   *   3. Close context after the test (automatic cleanup)
+   *   2. Start tracing on the context
+   *   3. yield page to the test
+   *   4. On failure: stop tracing → attach trace.zip to Allure report
+   *   5. Close context
    */
-  authedPage: async ({ browser }, use) => {
+  authedPage: async ({ browser }, use, testInfo) => {
     const context = await browser.newContext({
       storageState: STORAGE_STATE_PATH,
     });
+
+    /*
+     * Start tracing manually so we control when it stops.
+     * screenshots: true — captures a screenshot on every action.
+     * snapshots: true — captures DOM snapshot for each action (enables
+     *   "Pick locator" and element inspection in trace viewer).
+     */
+    await context.tracing.start({ screenshots: true, snapshots: true });
+
     const page = await context.newPage();
 
     try {
       await use(page);
     } finally {
+      /*
+       * Attach trace only when the test actually failed.
+       * Skipping on pass keeps allure-results lean — trace.zip can be
+       * several MB per test and is only useful for debugging failures.
+       */
+      if (testInfo.status !== testInfo.expectedStatus) {
+        const tracePath = testInfo.outputPath('trace.zip');
+        await context.tracing.stop({ path: tracePath });
+        await testInfo.attach('trace', {
+          path: tracePath,
+          contentType: 'application/zip',
+        });
+        await testInfo.attach('open trace in playwright viewer', {
+          body: Buffer.from('https://trace.playwright.dev'),
+          contentType: 'text/uri-list',
+        });
+      } else {
+        await context.tracing.stop();
+      }
+
       await context.close();
     }
   },
@@ -215,16 +250,18 @@ export const test = base.extend<CustomFixtures>({
    * Used in profile tests where we need to modify user data without
    * affecting the global test session.
    *
-   * Depends on testUser fixture — testUser is created first, then we
-   * log in as that user and inject the token into a fresh browser context.
+   * Trace is started manually on the context — same pattern as authedPage —
+   * so profile test failures also get trace.zip attached to the Allure report.
    *
    * Lifecycle:
    *   1. Login as testUser via API to get JWT token
    *   2. Create browser context with token in localStorage
-   *   3. yield page to the test
-   *   4. Close context after the test
+   *   3. Start tracing on the context
+   *   4. yield page to the test
+   *   5. On failure: stop tracing → attach trace.zip to Allure report
+   *   6. Close context
    */
-  authedTestUserPage: async ({ browser, testUser }, use) => {
+  authedTestUserPage: async ({ browser, testUser }, use, testInfo) => {
     const auth = await loginViaAPI({
       email: testUser.email,
       password: testUser.password,
@@ -242,10 +279,28 @@ export const test = base.extend<CustomFixtures>({
       },
     });
 
+    await context.tracing.start({ screenshots: true, snapshots: true });
+
     const page = await context.newPage();
+
     try {
       await use(page);
     } finally {
+      if (testInfo.status !== testInfo.expectedStatus) {
+        const tracePath = testInfo.outputPath('trace.zip');
+        await context.tracing.stop({ path: tracePath });
+        await testInfo.attach('trace', {
+          path: tracePath,
+          contentType: 'application/zip',
+        });
+        await testInfo.attach('open trace in playwright viewer', {
+          body: Buffer.from('https://trace.playwright.dev'),
+          contentType: 'text/uri-list',
+        });
+      } else {
+        await context.tracing.stop();
+      }
+
       await context.close();
     }
   },

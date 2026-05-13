@@ -5,7 +5,7 @@
  * since they share the same user context and are tested together.
  */
 
-import { type Page, type Locator } from '@playwright/test';
+import { type Page, type Locator, test } from '@playwright/test';
 import { BasePage } from './BasePage';
 
 export class ProfilePage extends BasePage {
@@ -50,11 +50,15 @@ export class ProfilePage extends BasePage {
   }
 
   async gotoProfile(username: string) {
-    await super.goto(`/profile/${encodeURIComponent(username)}`);
+    await test.step(`Navigate to profile: ${username}`, async () => {
+      await super.goto(`/profile/${encodeURIComponent(username)}`);
+    });
   }
 
   async gotoSettings() {
-    await super.goto('/settings');
+    await test.step('Navigate to settings', async () => {
+      await super.goto('/settings');
+    });
   }
 
   async updateSettings(fields: {
@@ -64,29 +68,33 @@ export class ProfilePage extends BasePage {
     password?: string;
     image?: string;
   }) {
-    if (fields.image !== undefined) {
-      await this.imageInput.clear();
-      await this.imageInput.fill(fields.image);
-    }
-    if (fields.username !== undefined) {
-      await this.usernameInput.clear();
-      await this.usernameInput.fill(fields.username);
-    }
-    if (fields.bio !== undefined) {
-      await this.bioInput.clear();
-      await this.bioInput.fill(fields.bio);
-    }
-    if (fields.email !== undefined) {
-      await this.emailInput.clear();
-      await this.emailInput.fill(fields.email);
-    }
-    if (fields.password !== undefined) {
-      await this.passwordInput.fill(fields.password);
-    }
-    await this.updateButton.click();
+    await test.step('Update settings', async () => {
+      if (fields.image !== undefined) {
+        await this.imageInput.clear();
+        await this.imageInput.fill(fields.image);
+      }
+      if (fields.username !== undefined) {
+        await this.usernameInput.clear();
+        await this.usernameInput.fill(fields.username);
+      }
+      if (fields.bio !== undefined) {
+        await this.bioInput.clear();
+        await this.bioInput.fill(fields.bio);
+      }
+      if (fields.email !== undefined) {
+        await this.emailInput.clear();
+        await this.emailInput.fill(fields.email);
+      }
+      if (fields.password !== undefined) {
+        await this.passwordInput.fill(fields.password);
+      }
+      await this.updateButton.click();
+    });
   }
 
   async logout() {
-    await this.logoutButton.click();
+    await test.step('Logout', async () => {
+      await this.logoutButton.click();
+    });
   }
 }
