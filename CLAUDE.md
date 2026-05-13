@@ -239,6 +239,8 @@ Done. Fixtures use `try/finally` for cleanup. PO declarations unified to top-of-
 Install `allure-playwright` + `allure-commandline`, wire reporter in `playwright.config.ts`.
 The npm scripts and CI steps are already scaffolded.
 
+Add @step() decorators to Page Object methods for granular Allure step hierarchy (e.g. LoginPage.login(), ArticlePage.submitComment()).
+
 Trace attachment for failed tests: add `testInfo.attach('trace', { path: traceFile })`
 in the `authedPage` fixture teardown so trace.zip is embedded directly in the Allure
 report next to the failed test — no digging through separate CI artifacts.

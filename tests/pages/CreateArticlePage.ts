@@ -5,7 +5,7 @@
  * No data-testid attributes — using getByPlaceholder().
  */
 
-import { type Page, type Locator } from '@playwright/test';
+import { type Page, type Locator, test } from '@playwright/test';
 import { BasePage } from './BasePage';
 
 export class CreateArticlePage extends BasePage {
@@ -25,27 +25,33 @@ export class CreateArticlePage extends BasePage {
   }
 
   async goto() {
-    await super.goto('/editor');
+    await test.step('Navigate to editor', async () => {
+      await super.goto('/editor');
+    });
   }
 
   async createArticle(title: string, description: string, body: string, tag?: string) {
-    await this.titleInput.fill(title);
-    await this.descriptionInput.fill(description);
-    await this.bodyInput.fill(body);
-    if (tag) {
-      await this.tagInput.fill(tag);
-      await this.tagInput.press('Enter');
-    }
-    await this.publishButton.click();
+    await test.step(`Create article: ${title}`, async () => {
+      await this.titleInput.fill(title);
+      await this.descriptionInput.fill(description);
+      await this.bodyInput.fill(body);
+      if (tag) {
+        await this.tagInput.fill(tag);
+        await this.tagInput.press('Enter');
+      }
+      await this.publishButton.click();
+    });
   }
 
   async editArticle(title: string, description: string, body: string) {
-    await this.titleInput.clear();
-    await this.titleInput.fill(title);
-    await this.descriptionInput.clear();
-    await this.descriptionInput.fill(description);
-    await this.bodyInput.clear();
-    await this.bodyInput.fill(body);
-    await this.publishButton.click();
+    await test.step('Edit article', async () => {
+      await this.titleInput.clear();
+      await this.titleInput.fill(title);
+      await this.descriptionInput.clear();
+      await this.descriptionInput.fill(description);
+      await this.bodyInput.clear();
+      await this.bodyInput.fill(body);
+      await this.publishButton.click();
+    });
   }
 }

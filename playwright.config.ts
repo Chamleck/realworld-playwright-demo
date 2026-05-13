@@ -54,10 +54,23 @@ export default defineConfig({
   /* Fail CI if someone accidentally commits test.only() */
   forbidOnly: !!process.env.CI,
 
-  reporter: [
-    ['html', { open: 'never' }],
-    ['list'],
-  ],
+  /*
+   * Reporters:
+   *   - allure-playwright: primary reporter, generates allure-results/ for
+   *     rich HTML report with steps, traces, screenshots, and trend history.
+   *   - list: real-time console output during test run.
+   *   - html (local only): built-in Playwright report as a quick fallback.
+   */
+  reporter: process.env.CI
+    ? [
+        ['allure-playwright', { resultsDir: 'allure-results' }],
+        ['list'],
+      ]
+    : [
+        ['allure-playwright', { resultsDir: 'allure-results' }],
+        ['html', { open: 'never' }],
+        ['list'],
+      ],
 
   use: {
     baseURL: BASE_URL,

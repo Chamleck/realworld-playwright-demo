@@ -4,7 +4,7 @@
  * Contains the article feed, popular tags sidebar, and pagination.
  */
 
-import { type Page, type Locator } from '@playwright/test';
+import { type Page, type Locator, test } from '@playwright/test';
 import { BasePage } from './BasePage';
 
 export class HomePage extends BasePage {
@@ -26,7 +26,9 @@ export class HomePage extends BasePage {
   }
 
   async goto() {
-    await super.goto('/');
+    await test.step('Navigate to home page', async () => {
+      await super.goto('/');
+    });
   }
 
   /* Get a specific article preview by its title */
@@ -48,12 +50,16 @@ export class HomePage extends BasePage {
 
   /* Click on an article title to navigate to the article page */
   async clickArticle(title: string) {
-    await this.page.getByRole('link', { name: title }).first().click();
+    await test.step(`Open article: ${title}`, async () => {
+      await this.page.getByRole('link', { name: title }).first().click();
+    });
   }
 
   /* Click on a tag in the sidebar */
   async clickTag(tagName: string) {
-    await this.popularTags.filter({ hasText: tagName }).click();
+    await test.step(`Click tag: ${tagName}`, async () => {
+      await this.popularTags.filter({ hasText: tagName }).click();
+    });
   }
 
   async findArticleAcrossPages(title: string): Promise<Locator> {

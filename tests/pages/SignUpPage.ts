@@ -5,7 +5,7 @@
  * so we use getByPlaceholder() for inputs and getByRole() for the button.
  */
 
-import { type Page, type Locator } from '@playwright/test';
+import { type Page, type Locator, test } from '@playwright/test';
 import { BasePage } from './BasePage';
 
 export class SignUpPage extends BasePage {
@@ -25,13 +25,17 @@ export class SignUpPage extends BasePage {
   }
 
   async goto() {
-    await super.goto('/register');
+    await test.step('Navigate to register page', async () => {
+      await super.goto('/register');
+    });
   }
 
   async register(username: string, email: string, password: string) {
-    await this.usernameInput.fill(username);
-    await this.emailInput.fill(email);
-    await this.passwordInput.fill(password);
-    await this.submitButton.click();
+    await test.step(`Register user: ${username}`, async () => {
+      await this.usernameInput.fill(username);
+      await this.emailInput.fill(email);
+      await this.passwordInput.fill(password);
+      await this.submitButton.click();
+    });
   }
 }

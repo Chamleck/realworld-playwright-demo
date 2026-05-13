@@ -5,7 +5,7 @@
  *   input-email, input-password, btn-submit
  */
 
-import { type Page, type Locator } from '@playwright/test';
+import { type Page, type Locator, test } from '@playwright/test';
 import { BasePage } from './BasePage';
 
 export class LoginPage extends BasePage {
@@ -23,12 +23,16 @@ export class LoginPage extends BasePage {
   }
 
   async goto() {
-    await super.goto('/login');
+    await test.step('Navigate to login page', async () => {
+      await super.goto('/login');
+    });
   }
 
   async login(email: string, password: string) {
-    await this.emailInput.fill(email);
-    await this.passwordInput.fill(password);
-    await this.submitButton.click();
+    await test.step(`Login as ${email}`, async () => {
+      await this.emailInput.fill(email);
+      await this.passwordInput.fill(password);
+      await this.submitButton.click();
+    });
   }
 }
