@@ -1,0 +1,19 @@
+{
+  // Extends the root tsconfig but scopes type-checking to test code only.
+  // This avoids false positives from @trpc/server v10 type incompatibilities
+  // in src/ which are a pre-existing app issue, not our test framework errors.
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "noEmit": true
+  },
+  "include": [
+    "tests/**/*.ts",
+    "globalSetup.ts",
+    "globalTeardown.ts",
+    "playwright.config.ts"
+  ],
+  "exclude": [
+    "node_modules",
+    "src"
+  ]
+}

@@ -5,6 +5,14 @@
 # Fast feedback on every push and pull request.
 # Runs only Chromium (desktop) to keep the pipeline under 5 minutes.
 # Full cross-browser regression runs nightly — see nightly.yml.
+#
+# Multi-environment support via prefixed secrets:
+#   GitHub Environments are paid for private repos — instead we use prefixed
+#   secrets in shared space (STAGING_JWT_SECRET, PROD_JWT_SECRET, etc.) with
+#   a workflow_dispatch `environment` input (dev / staging / production).
+#   The workflow reads the correct prefix and substitutes the right secrets.
+#   To add a new environment: add prefixed secrets to GitHub repo settings
+#   and extend the "Set environment secrets" step below.
 
 name: E2E Tests
 
@@ -14,13 +22,21 @@ on:
   pull_request:
     branches: [main, dev]
 
-  # Allow manual trigger from GitHub UI (Actions tab → Run workflow)
   workflow_dispatch:
     inputs:
       grep:
         description: 'Filter tests by tag (e.g. @smoke, @auth, @articles)'
         required: false
         default: ''
+      environment:
+        description: 'Target environment'
+        required: false
+        default: 'dev'
+        type: choice
+        options:
+          - dev
+          - staging
+          - production
 
 # Cancel previous runs for the same branch/PR — saves runner minutes
 concurrency:
@@ -32,16 +48,6 @@ jobs:
     name: E2E Chromium
     runs-on: ubuntu-latest
     timeout-minutes: 15
-
-    env:
-      CI: true
-      BASE_URL: http://localhost:3000
-      DATABASE_URL: file:./database.sqlite
-      TEST_DATABASE_URL: file:./test.sqlite
-      JWT_SECRET: ${{ secrets.JWT_SECRET }}
-      TEST_USER_EMAIL: ${{ secrets.TEST_USER_EMAIL }}
-      TEST_USER_PASSWORD: ${{ secrets.TEST_USER_PASSWORD }}
-      TEST_USER_USERNAME: ${{ secrets.TEST_USER_USERNAME }}
 
     steps:
       - name: Checkout repository
@@ -56,6 +62,45 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
+      # Read environment-specific secrets based on the selected environment.
+      # Dev secrets have no prefix (backwards compatible with existing setup).
+      # Staging and production secrets use STAGING_* and PROD_* prefixes.
+      # BASE_URL is environment-specific — points to the correct deploy target.
+      - name: Set environment secrets
+        run: |
+          ENV="${{ github.event.inputs.environment || 'dev' }}"
+          if [ "$ENV" = "dev" ]; then
+            echo "JWT_SECRET=${{ secrets.JWT_SECRET }}" >> $GITHUB_ENV
+            echo "TEST_USER_EMAIL=${{ secrets.TEST_USER_EMAIL }}" >> $GITHUB_ENV
+            echo "TEST_USER_PASSWORD=${{ secrets.TEST_USER_PASSWORD }}" >> $GITHUB_ENV
+            echo "TEST_USER_USERNAME=${{ secrets.TEST_USER_USERNAME }}" >> $GITHUB_ENV
+            echo "BASE_URL=http://localhost:3000" >> $GITHUB_ENV
+          elif [ "$ENV" = "staging" ]; then
+            echo "JWT_SECRET=${{ secrets.STAGING_JWT_SECRET }}" >> $GITHUB_ENV
+            echo "TEST_USER_EMAIL=${{ secrets.STAGING_TEST_USER_EMAIL }}" >> $GITHUB_ENV
+            echo "TEST_USER_PASSWORD=${{ secrets.STAGING_TEST_USER_PASSWORD }}" >> $GITHUB_ENV
+            echo "TEST_USER_USERNAME=${{ secrets.STAGING_TEST_USER_USERNAME }}" >> $GITHUB_ENV
+            echo "BASE_URL=${{ secrets.STAGING_BASE_URL }}" >> $GITHUB_ENV
+          elif [ "$ENV" = "production" ]; then
+            echo "JWT_SECRET=${{ secrets.PROD_JWT_SECRET }}" >> $GITHUB_ENV
+            echo "TEST_USER_EMAIL=${{ secrets.PROD_TEST_USER_EMAIL }}" >> $GITHUB_ENV
+            echo "TEST_USER_PASSWORD=${{ secrets.PROD_TEST_USER_PASSWORD }}" >> $GITHUB_ENV
+            echo "TEST_USER_USERNAME=${{ secrets.PROD_TEST_USER_USERNAME }}" >> $GITHUB_ENV
+            echo "BASE_URL=${{ secrets.PROD_BASE_URL }}" >> $GITHUB_ENV
+          fi
+
+      - name: Set static environment variables
+        run: |
+          echo "CI=true" >> $GITHUB_ENV
+          echo "DATABASE_URL=file:./database.sqlite" >> $GITHUB_ENV
+          echo "TEST_DATABASE_URL=file:./test.sqlite" >> $GITHUB_ENV
+
+      - name: Type check
+        run: npm run type:check
+
+      - name: Lint
+        run: npm run lint:tests
+
       - name: Install Playwright Chromium
         run: npx playwright install --with-deps chromium
 
@@ -66,7 +111,6 @@ jobs:
         if: always()
         run: npm run allure:generate
 
-      # Upload test artifacts for debugging failed tests
       - name: Upload Playwright report
         uses: actions/upload-artifact@v4
         if: always()

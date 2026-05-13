@@ -8,6 +8,8 @@
     "dev": "next dev",
     "start": "next start",
     "lint": "next lint",
+    "lint:tests": "eslint tests/ globalSetup.ts globalTeardown.ts playwright.config.ts --ext .ts",
+    "type:check": "tsc --noEmit -p tsconfig.test.json",
     "initialize": "npm run initialize:env && npm run initialize:database",
     "initialize:env": "shx cp -n .env.example .env",
     "initialize:database": "shx cp -n prisma/base.sqlite prisma/database.sqlite",
