@@ -5,7 +5,7 @@
  * Every Page Object extends this class and receives `page` via constructor.
  */
 
-import { type Page, type Locator, expect } from '@playwright/test';
+import { type Page, type Locator } from '@playwright/test';
 
 export class BasePage {
   readonly page: Page;
@@ -31,7 +31,7 @@ export class BasePage {
   }
 
   /* Navigate to a path relative to baseURL */
-  async goto(path: string = '/') {
+  async goto(path = '/') {
     await this.page.goto(path);
   }
 

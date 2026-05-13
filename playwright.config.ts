@@ -43,7 +43,7 @@ export default defineConfig({
    * Workers: 50% of CPU cores locally (keeps machine responsive),
    * 1 in CI (GitHub runners have limited resources — we scale via sharding instead).
    */
-  workers: process.env.CI ? 1 : '50%',
+  workers: process.env.CI ? 2 : '50%',
 
   /*
    * Retries: 0 locally (fail fast, debug immediately),

@@ -8,21 +8,31 @@
 # This catches browser-specific bugs that the fast PR pipeline (Chromium-only)
 # would miss: WebKit rendering differences, Firefox event handling quirks,
 # mobile viewport issues, touch event problems.
+#
+# Multi-environment support via prefixed secrets — same approach as e2e.yml.
+# See e2e.yml for full explanation of the multi-env architecture.
 
 name: Nightly Regression
 
 on:
   schedule:
-    # Every night at 2:00 AM UTC (adjust to your timezone)
     - cron: '0 2 * * *'
 
-  # Allow manual trigger with optional tag filter and browser selection
   workflow_dispatch:
     inputs:
       grep:
         description: 'Filter tests by tag (e.g. @smoke, @auth)'
         required: false
         default: ''
+      environment:
+        description: 'Target environment'
+        required: false
+        default: 'dev'
+        type: choice
+        options:
+          - dev
+          - staging
+          - production
       project:
         description: 'Browser project (leave empty for all)'
         required: false
@@ -46,16 +56,6 @@ jobs:
       matrix:
         project: [chromium, firefox, mobile-chrome, mobile-safari]
 
-    env:
-      CI: true
-      BASE_URL: http://localhost:3000
-      DATABASE_URL: file:./database.sqlite
-      TEST_DATABASE_URL: file:./test.sqlite
-      JWT_SECRET: ${{ secrets.JWT_SECRET }}
-      TEST_USER_EMAIL: ${{ secrets.TEST_USER_EMAIL }}
-      TEST_USER_PASSWORD: ${{ secrets.TEST_USER_PASSWORD }}
-      TEST_USER_USERNAME: ${{ secrets.TEST_USER_USERNAME }}
-
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -69,14 +69,52 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
-      # Install only the browser needed for this matrix job
+      # Read environment-specific secrets based on the selected environment.
+      # Dev secrets have no prefix (backwards compatible with existing setup).
+      # Staging and production secrets use STAGING_* and PROD_* prefixes.
+      # BASE_URL is environment-specific — points to the correct deploy target.
+      - name: Set environment secrets
+        run: |
+          ENV="${{ github.event.inputs.environment || 'dev' }}"
+          if [ "$ENV" = "dev" ]; then
+            echo "JWT_SECRET=${{ secrets.JWT_SECRET }}" >> $GITHUB_ENV
+            echo "TEST_USER_EMAIL=${{ secrets.TEST_USER_EMAIL }}" >> $GITHUB_ENV
+            echo "TEST_USER_PASSWORD=${{ secrets.TEST_USER_PASSWORD }}" >> $GITHUB_ENV
+            echo "TEST_USER_USERNAME=${{ secrets.TEST_USER_USERNAME }}" >> $GITHUB_ENV
+            echo "BASE_URL=http://localhost:3000" >> $GITHUB_ENV
+          elif [ "$ENV" = "staging" ]; then
+            echo "JWT_SECRET=${{ secrets.STAGING_JWT_SECRET }}" >> $GITHUB_ENV
+            echo "TEST_USER_EMAIL=${{ secrets.STAGING_TEST_USER_EMAIL }}" >> $GITHUB_ENV
+            echo "TEST_USER_PASSWORD=${{ secrets.STAGING_TEST_USER_PASSWORD }}" >> $GITHUB_ENV
+            echo "TEST_USER_USERNAME=${{ secrets.STAGING_TEST_USER_USERNAME }}" >> $GITHUB_ENV
+            echo "BASE_URL=${{ secrets.STAGING_BASE_URL }}" >> $GITHUB_ENV
+          elif [ "$ENV" = "production" ]; then
+            echo "JWT_SECRET=${{ secrets.PROD_JWT_SECRET }}" >> $GITHUB_ENV
+            echo "TEST_USER_EMAIL=${{ secrets.PROD_TEST_USER_EMAIL }}" >> $GITHUB_ENV
+            echo "TEST_USER_PASSWORD=${{ secrets.PROD_TEST_USER_PASSWORD }}" >> $GITHUB_ENV
+            echo "TEST_USER_USERNAME=${{ secrets.PROD_TEST_USER_USERNAME }}" >> $GITHUB_ENV
+            echo "BASE_URL=${{ secrets.PROD_BASE_URL }}" >> $GITHUB_ENV
+          fi
+
+      - name: Set static environment variables
+        run: |
+          echo "CI=true" >> $GITHUB_ENV
+          echo "DATABASE_URL=file:./database.sqlite" >> $GITHUB_ENV
+          echo "TEST_DATABASE_URL=file:./test.sqlite" >> $GITHUB_ENV
+
+      - name: Type check
+        run: npm run type:check
+
+      - name: Lint
+        run: npm run lint:tests
+
       - name: Install Playwright browser
         run: npx playwright install --with-deps ${{ matrix.project == 'mobile-chrome' && 'chromium' || matrix.project == 'mobile-safari' && 'webkit' || matrix.project }}
 
       - name: Run E2E tests
         run: >
           npx playwright test
-          --project=${{ matrix.project }}
+          --project=${{ github.event.inputs.project || matrix.project }}
           ${{ github.event.inputs.grep && format('--grep "{0}"', github.event.inputs.grep) || '' }}
 
       - name: Generate Allure report
