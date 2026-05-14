@@ -126,7 +126,13 @@ export const test = base.extend<CustomFixtures>({
      * snapshots: true — captures DOM snapshot for each action (enables
      *   "Pick locator" and element inspection in trace viewer).
      */
-    await context.tracing.start({ screenshots: true, snapshots: true });
+    try {
+      await context.tracing.start({ screenshots: true, snapshots: true });
+    } catch {
+      // tracing may already be started on retry — stop and restart
+      await context.tracing.stop();
+      await context.tracing.start({ screenshots: true, snapshots: true });
+    }
 
     const page = await context.newPage();
 
@@ -279,7 +285,13 @@ export const test = base.extend<CustomFixtures>({
       },
     });
 
-    await context.tracing.start({ screenshots: true, snapshots: true });
+    try {
+      await context.tracing.start({ screenshots: true, snapshots: true });
+    } catch {
+      // tracing may already be started on retry — stop and restart
+      await context.tracing.stop();
+      await context.tracing.start({ screenshots: true, snapshots: true });
+    }
 
     const page = await context.newPage();
 

@@ -115,6 +115,7 @@ jobs:
         run: >
           npx playwright test
           --project=${{ github.event.inputs.project || matrix.project }}
+           --workers=${{ (matrix.project == 'firefox' || matrix.project == 'mobile-safari') && '1' || '2' }}
           ${{ github.event.inputs.grep && format('--grep "{0}"', github.event.inputs.grep) || '' }}
 
       - name: Generate Allure report
