@@ -357,7 +357,11 @@ stale-locator issues when the DOM updates between page transitions.
 
 ### Firefox/WebKit NS_BINDING_ABORTED in CI
 
-Firefox and WebKit occasionally abort navigation (`NS_BINDING_ABORTED`) when two workers run in parallel on GitHub Actions runners. This is a browser-specific CI instability, not a test bug. Mitigated by running Firefox and mobile-safari nightly jobs with `--workers=1` via CLI override in `nightly.yml`.
+Firefox and WebKit occasionally abort navigation (`NS_BINDING_ABORTED` / "interrupted by another navigation") when a new `goto()` is called while the browser is still processing a redirect from a previous action (logout, article deletion). This is a WebKit/Gecko timing issue — Chromium handles it gracefully, these engines don't.
+
+**Fix**: add `waitForLoadState('networkidle')` inside the Page Object method that triggers the redirect (`logout()`, `clickDelete()`). This ensures the redirect completes before the next navigation starts. Applied in `ProfilePage.logout()` and `ArticlePage.clickDelete()`.
+
+Nightly jobs for Firefox and mobile-safari also run with `--workers=1` to reduce parallel load on CI runners.
 
 ---
 
