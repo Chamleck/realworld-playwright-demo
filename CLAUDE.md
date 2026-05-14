@@ -61,6 +61,8 @@ realworld-playwright-demo/
 │   └── schema.prisma              # Prisma schema
 ├── src/                           # Application source (do not modify)
 ├── tests/
+│   ├── allure-config/
+│   │   └── categories.json        # Allure categories for known bug classification
 │   ├── auth/
 │   │   └── .storage-state.json    # Saved auth state (gitignored, created by globalSetup)
 │   ├── e2e/                       # Spec files: auth.spec.ts, articles.spec.ts, profile.spec.ts
@@ -202,6 +204,13 @@ New variables must be added to: `.env.example` + `tests/helpers/env.ts` + GitHub
 - Manual trigger: `grep` input + `environment` input + `project` input (single browser)
 - Per-browser artifacts: Playwright report, Allure report, traces on failure
 
+### Allure Report — GitHub Pages (`pages.yml`)
+
+- Triggers: after every completed `E2E Tests` run on `tests/e2e-suite`, `dev`, `main`
+- Restores allure-history from `gh-pages` for trend graphs
+- Publishes live report to `https://chamleck.github.io/realworld-playwright-demo`
+- Summary link added to every pipeline run
+
 ### Multi-environment strategy
 
 GitHub Environments are a paid feature for private repos — not used here. Instead, secrets are prefixed per environment and stored in the shared repository secrets space. The `environment` input on `workflow_dispatch` controls which prefix is read:
@@ -288,12 +297,20 @@ Done. Both `e2e.yml` and `nightly.yml` updated with:
 
 **Docker considered and deprioritized**: GitHub Actions `ubuntu-latest` runners provide a clean, reproducible environment for each run. Adding a Docker layer would increase complexity and image pull time without meaningful isolation benefit at this project's scale. Noted here so the decision is explicit, not accidental.
 
-### M4.4 + M4.5 — Allure history + GitHub Pages publish
+### M4.4 + M4.5 — Allure history + GitHub Pages publish ✅
 
-Combined into one PR. Auto-publish Allure HTML report to `gh-pages` branch after
-every CI run — live at `Chamleck.github.io/realworld-playwright-demo`. Preserve
-allure-history between runs for trend graphs (pass/fail over time, flakiness detection).
-Add categories for known issues (e.g. "Foreign key bug" for the FK constraint test).
+Done. Auto-publishes Allure HTML report to `gh-pages` branch after every `e2e.yml` run.
+Live report: https://chamleck.github.io/realworld-playwright-demo
+
+- `pages.yml` workflow: triggers on `E2E Tests` completion, downloads `allure-results`
+  artifact, restores `allure-history` from `gh-pages`, generates report with trend data,
+  deploys via `peaceiris/actions-gh-pages`
+- `tests/allure-config/categories.json` — classifies FK constraint bug as "Known bugs"
+  category in Allure report; copied into `allure-results/` before report generation
+- `allure-results/` uploaded as artifact in `e2e.yml` and `nightly.yml` for Pages workflow
+- `$GITHUB_STEP_SUMMARY` in both workflows — adds clickable link to live report in
+  each pipeline run's Summary tab
+- GitHub Pages configured to serve from `gh-pages` branch
 
 ### M4.6 — Documentation polish
 

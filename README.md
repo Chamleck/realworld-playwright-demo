@@ -100,6 +100,7 @@ Fixtures call Helpers (tests/helpers/)
 - Workers: 2 in CI — GitHub runners handle 2 parallel workers stably for this suite size.
 - Artifacts: Playwright HTML report + Allure report (always), traces/screenshots/videos (on failure only).
 - **Docker considered and deprioritized**: GitHub Actions `ubuntu-latest` runners provide a clean, reproducible environment per run. Docker would add complexity and image pull time without meaningful benefit at this scale.
+- **Allure report** (`pages.yml`): auto-published to [GitHub Pages](https://chamleck.github.io/realworld-playwright-demo) after every E2E run. Each pipeline run shows a direct link in its Summary tab.
 
 ### Multi-environment support
 
@@ -159,11 +160,13 @@ All variables are validated at startup via zod — missing or malformed values f
 If you're reviewing this as a portfolio piece:
 
 1. **Read the PRs** — each branch opens a PR showing a distinct phase of building the framework.
-2. **Look at the architecture** — `tests/` folder structure, separation of helpers/fixtures/pages/specs.
-3. **Open the Allure report** — run `npm run allure:report` after `npm test` to see step hierarchy, trace attachments, and test categorization.
-4. **Check the CI** — `.github/workflows/` for pipeline design, multi-environment strategy, artifact handling, matrix strategy.
-5. **Run the tests** — `npm test` to see it work end-to-end.
-6. **Read CLAUDE.md** — documents every architectural decision including tradeoffs and things explicitly not done (and why).
+2. **View the live Allure report** — [open the report](https://chamleck.github.io/realworld-playwright-demo) to see step hierarchy, trace attachments, trend graphs, and bug categorization — no setup required.
+3. **Look at the architecture** — `tests/` folder structure, separation of helpers/fixtures/pages/specs.
+4. **Open the Allure report** — run `npm run allure:report` after `npm test` to see step hierarchy, trace attachments, and test categorization.
+5. **Check the CI** — `.github/workflows/` for pipeline design, multi-environment strategy, artifact handling, matrix strategy.
+6. **Run the tests** — `npm test` to see it work end-to-end.
+7. **Read CLAUDE.md** — documents every architectural decision including tradeoffs and things explicitly not done (and why).
+
 
 ## Future improvements
 

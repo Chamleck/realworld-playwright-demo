@@ -1,0 +1,15 @@
+[
+  {
+    "name": "Known bugs — FK constraint",
+    "matchedStatuses": ["failed"],
+    "titleRegex": ".*delete article with comment.*"
+  },
+  {
+    "name": "Product defects",
+    "matchedStatuses": ["failed"]
+  },
+  {
+    "name": "Test defects",
+    "matchedStatuses": ["broken"]
+  }
+]
