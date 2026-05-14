@@ -175,6 +175,8 @@ async function globalSetup() {
     ],
   };
 
+  // Ensure the auth directory exists before writing storageState
+  fs.mkdirSync(path.dirname(STORAGE_STATE_PATH), { recursive: true });
   fs.writeFileSync(STORAGE_STATE_PATH, JSON.stringify(storageState, null, 2));
   console.log(`  ✅ Storage state saved to ${STORAGE_STATE_PATH}`);
 
