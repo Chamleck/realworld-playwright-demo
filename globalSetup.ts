@@ -13,7 +13,6 @@
  * and the test user's credentials.
  */
 
-import { chromium } from '@playwright/test';
 import path from 'path';
 import fs from 'fs';
 import { loginViaAPI } from './tests/helpers/api';
@@ -116,8 +115,7 @@ async function globalSetup() {
    * credentials and returns a JWT token. This is the same endpoint
    * the UI login form calls — but we skip the UI entirely.
    *
-   * The token will be injected into sessionStorage in the next step
-   * so that browsers start "already logged in".
+   * The token is used in the next step to build the storageState file.
    */
   const auth = await loginViaAPI({
     email: GLOBAL_TEST_USER.email,
@@ -128,7 +126,7 @@ async function globalSetup() {
   /* ---------------------------------------------------------------- */
   /* Step 4: Save storageState with the JWT token                      */
   /* ---------------------------------------------------------------- */
- 
+
   /*
    * The Conduit app stores the JWT in localStorage under key "token"
    * (src/lib/api.ts — setToken/getToken functions).
@@ -138,41 +136,49 @@ async function globalSetup() {
    * localStorage contents, while sessionStorage capture is not guaranteed.
    * The app's src/lib/api.ts was updated accordingly.
    *
-   * To make the browser "already logged in", we need to:
-   *   1. Open a real browser (localStorage is a browser API)
-   *   2. Navigate to the app's origin (localStorage is per-origin)
-   *   3. Wait for full page load (ensures the origin is fully registered)
-   *   4. Inject the token into localStorage
-   *   5. Save the entire browser state (cookies + localStorage) to a JSON file
+   * storageState is a JSON file of this shape:
+   *   {
+   *     cookies: [],
+   *     origins: [{ origin: "http://...", localStorage: [{ name, value }] }]
+   *   }
    *
-   * This file is then loaded by the authedPage fixture for every
-   * authenticated test via browser.newContext({ storageState: ... }).
+   * When a test loads this file via:
+   *   browser.newContext({ storageState: STORAGE_STATE_PATH })
+   * Playwright injects the stored cookies and localStorage into the new
+   * context — the browser starts "already logged in".
    *
-   * Why open a real browser just for this?
-   * localStorage can only be set from within a browser context bound
-   * to a specific origin. There's no way to write it from Node.js directly.
-   * This adds ~1-2 seconds to setup but only happens once per test run.
+   * EVOLUTION — why we no longer launch a browser here:
+   *
+   * Original approach (v1): launched a real Chromium instance, navigated
+   * to the app, injected the token via page.evaluate(), then called
+   * context.storageState({ path }) to dump the JSON.
+   *
+   * Problem: this hard-coded a dependency on Chromium in globalSetup.
+   * When the nightly CI runs Firefox or WebKit jobs, those jobs only
+   * install their own browser — Chromium is not present. globalSetup
+   * crashed at chromium.launch() before a single test ran.
+   *
+   * Current approach (v2): since we already have the JWT token from the
+   * API call above, we can write the storageState JSON directly using
+   * fs.writeFileSync — no browser required. The file is identical in
+   * structure to what Playwright would have produced. This makes
+   * globalSetup browser-agnostic: it runs identically regardless of
+   * which browser project is executing the tests.
    */
-  const browser = await chromium.launch();
-  const context = await browser.newContext();
-  const page = await context.newPage();
- 
-  /* Navigate to app and wait for full load — establishes the origin */
-  await page.goto(env.BASE_URL);
-  await page.waitForLoadState('networkidle');
- 
-  /* Inject JWT into localStorage (key = 'token', same as the app uses) */
-  await page.evaluate((token) => {
-    localStorage.setItem('token', token);
-  }, auth.token);
- 
-  /* Save browser state to JSON file — includes cookies and localStorage */
-  await context.storageState({ path: STORAGE_STATE_PATH });
+  const storageState = {
+    cookies: [],
+    origins: [
+      {
+        origin: env.BASE_URL,
+        localStorage: [{ name: 'token', value: auth.token }],
+      },
+    ],
+  };
+
+  fs.writeFileSync(STORAGE_STATE_PATH, JSON.stringify(storageState, null, 2));
   console.log(`  ✅ Storage state saved to ${STORAGE_STATE_PATH}`);
- 
-  await browser.close();
- 
+
   console.log('\n🔧 Global Setup: done!\n');
 }
- 
+
 export default globalSetup;

@@ -120,7 +120,7 @@ realworld-playwright-demo/
 
 ### Auth strategy
 
-- `globalSetup` logs in pre-seeded user (`jake@jake.jake`) via tRPC API → saves storageState to `tests/auth/.storage-state.json`.
+- `globalSetup` logs in pre-seeded user (`jake@jake.jake`) via tRPC API → writes storageState JSON directly to `tests/auth/.storage-state.json` (no browser needed — token from API is injected directly into the JSON structure).
 - `authedPage` fixture loads storageState → page starts logged in as the pre-seeded user. Starts `context.tracing` manually — trace.zip attached to Allure report on failure.
 - `testUser` fixture creates a unique user in DB via Prisma → provides to test → deletes after.
 - `authedTestUserPage` depends on `testUser`: logs in as that user via API, injects JWT into `localStorage` via a fresh browser context. Used by tests that mutate user-specific state (profile updates) without polluting the pre-seeded user. Also starts `context.tracing` — trace.zip attached on failure.
@@ -283,6 +283,7 @@ Done. Both `e2e.yml` and `nightly.yml` updated with:
 - Multi-environment support via prefixed secrets — see "Multi-environment strategy" above
 - `environment` input added to both workflows alongside existing `grep` input
 - `tests/` added to `.prettierignore` — prevents Prettier conflicts between `src/` (`semi: false`) and tests (`semi: true`)
+- Refactored `globalSetup.ts` — removed Chromium dependency from setup; storageState now written directly as JSON via `fs.writeFileSync`, making setup browser-agnostic (fixes Firefox/WebKit nightly jobs crashing at `chromium.launch()`)
 
 **Docker considered and deprioritized**: GitHub Actions `ubuntu-latest` runners provide a clean, reproducible environment for each run. Adding a Docker layer would increase complexity and image pull time without meaningful isolation benefit at this project's scale. Noted here so the decision is explicit, not accidental.
 
