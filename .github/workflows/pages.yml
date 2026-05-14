@@ -70,12 +70,11 @@ jobs:
       - name: Generate Allure report with history
         run: npm run allure:generate
 
-      # Copy history from generated report back — will be committed to gh-pages
-      # so the next run can restore it.
+      # History is already in allure-report/history/ after generation.
+      # peaceiris/actions-gh-pages will publish it to gh-pages automatically.
       - name: Preserve history for next run
-        run: |
-          mkdir -p allure-report/history
-          cp -r allure-report/history/. allure-report/history/
+        run: echo "History preserved in allure-report/history/"
+          
 
       # Publish allure-report/ to gh-pages branch.
       # peaceiris/actions-gh-pages creates the branch if it doesn't exist.
