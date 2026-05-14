@@ -86,6 +86,7 @@ export class ArticlePage extends BasePage {
     await test.step('Click Delete Article', async () => {
       this.page.once('dialog', dialog => dialog.accept());
       await this.deleteButton.first().click();
+      await this.page.waitForLoadState('networkidle');
     });
   }
 }
