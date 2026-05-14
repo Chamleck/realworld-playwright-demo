@@ -284,6 +284,7 @@ Done. Both `e2e.yml` and `nightly.yml` updated with:
 - `environment` input added to both workflows alongside existing `grep` input
 - `tests/` added to `.prettierignore` — prevents Prettier conflicts between `src/` (`semi: false`) and tests (`semi: true`)
 - Refactored `globalSetup.ts` — removed Chromium dependency from setup; storageState now written directly as JSON via `fs.writeFileSync`, making setup browser-agnostic (fixes Firefox/WebKit nightly jobs crashing at `chromium.launch()`)
+- Firefox and WebKit nightly jobs run with `--workers=1` to avoid `NS_BINDING_ABORTED` flakiness in CI — Chromium jobs keep `--workers=2`
 
 **Docker considered and deprioritized**: GitHub Actions `ubuntu-latest` runners provide a clean, reproducible environment for each run. Adding a Docker layer would increase complexity and image pull time without meaningful isolation benefit at this project's scale. Noted here so the decision is explicit, not accidental.
 
@@ -353,6 +354,10 @@ catches it. Worst-case time: 5 passes × 4 pages × ~300 ms = ~6 s.
 
 Navigation is URL-based (`/?offset=N`) rather than clicking pagination links — avoids
 stale-locator issues when the DOM updates between page transitions.
+
+### Firefox/WebKit NS_BINDING_ABORTED in CI
+
+Firefox and WebKit occasionally abort navigation (`NS_BINDING_ABORTED`) when two workers run in parallel on GitHub Actions runners. This is a browser-specific CI instability, not a test bug. Mitigated by running Firefox and mobile-safari nightly jobs with `--workers=1` via CLI override in `nightly.yml`.
 
 ---
 
