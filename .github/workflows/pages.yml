@@ -1,0 +1,91 @@
+# =============================================================================
+# Allure Report — GitHub Pages Publisher
+# =============================================================================
+#
+# Runs after every successful E2E Tests run on tests/e2e-suite or dev branches.
+# Downloads allure-results artifact, restores allure-history from gh-pages,
+# generates a fresh Allure report with trend graphs, and publishes to gh-pages.
+#
+# Live report: https://chamleck.github.io/realworld-playwright-demo
+#
+# History preservation:
+#   allure-history/ is stored in the gh-pages branch between runs.
+#   Each new report includes trend data from all previous runs —
+#   pass/fail over time, flakiness detection, duration trends.
+
+name: Allure Report — GitHub Pages
+
+on:
+  workflow_run:
+    workflows: ["E2E Tests"]
+    types: [completed]
+    branches: [tests/e2e-suite, dev, main]
+
+jobs:
+  publish:
+    name: Publish Allure Report
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    # Run regardless of whether E2E Tests passed or failed —
+    # a failed run is the most important one to publish.
+    if: always()
+
+    permissions:
+      contents: write
+      pages: write
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 18
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      # Download allure-results from the triggering E2E Tests run
+      - name: Download allure-results artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: allure-results
+          path: allure-results/
+          run-id: ${{ github.event.workflow_run.id }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+
+      # Restore allure-history from gh-pages branch to preserve trend data.
+      # If gh-pages doesn't exist yet (first run), this step is skipped gracefully.
+      - name: Restore Allure history from gh-pages
+        continue-on-error: true
+        run: |
+          git fetch origin gh-pages --depth=1
+          mkdir -p allure-results/history
+          git checkout origin/gh-pages -- history/ 2>/dev/null || true
+          cp -r history/. allure-results/history/ 2>/dev/null || true
+
+      - name: Generate Allure report with history
+        run: npm run allure:generate
+
+      # Copy history from generated report back — will be committed to gh-pages
+      # so the next run can restore it.
+      - name: Preserve history for next run
+        run: |
+          mkdir -p allure-report/history
+          cp -r allure-report/history/. allure-report/history/
+
+      # Publish allure-report/ to gh-pages branch.
+      # peaceiris/actions-gh-pages creates the branch if it doesn't exist.
+      - name: Deploy to GitHub Pages
+        uses: peaceiris/actions-gh-pages@v3
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          publish_dir: allure-report
+          publish_branch: gh-pages
+          keep_files: false
+          user_name: 'github-actions[bot]'
+          user_email: 'github-actions[bot]@users.noreply.github.com'
+          commit_message: 'ci: update Allure report [${{ github.event.workflow_run.head_sha }}]'
