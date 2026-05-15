@@ -42,10 +42,10 @@ The system under test (SUT) is a [RealWorld](https://github.com/gothinkster/real
 ---
 
 ## Branch strategy
-main                         ← application under test only (no tests)
-└── setup/playwright           ← Playwright infrastructure, config, CI, reporting (merged)
-└── tests/e2e-suite         ← actual spec files + Page Objects  [YOU ARE HERE]
-└── dev                   ← stable integration, polish, final docs
+main                          ← application under test only (no tests)
+└── setup/playwright         ← Playwright infrastructure, config, CI, reporting (merged)
+└── tests/e2e-suite    ← actual spec files + Page Objects  [YOU ARE HERE]
+└── dev            ← stable integration, polish, final docs
 
 ---
 
@@ -72,7 +72,7 @@ realworld-playwright-demo/
 │   │   │   ├── articles.json      # Test data: articles, comments
 │   │   │   ├── users.json         # Test data: valid/invalid users
 │   │   │   └── types.ts           # TypeScript interfaces for JSON fixtures
-│   │   └── test-fixtures.ts       # Custom fixtures: authedPage, testUser, seededArticle, authedTestUserPage, profileUpdate
+│   │   └── test-fixtures.ts       # Custom fixtures
 │   ├── helpers/
 │   │   ├── api.ts                 # tRPC helpers: loginViaAPI, registerViaAPI, createArticleViaAPI
 │   │   ├── db.ts                  # Prisma helpers: seedUser, deleteUser, deleteArticle
@@ -81,7 +81,7 @@ realworld-playwright-demo/
 ├── globalSetup.ts                 # Runs before all tests: reset DB, save storageState
 ├── globalTeardown.ts              # Runs after all tests: disconnect Prisma
 ├── playwright.config.ts           # 4 browser projects, webServer, reporters
-├── tsconfig.test.json             # TypeScript config scoped to test files only (excludes src/ to avoid @trpc/server v10 issues)
+├── tsconfig.test.json             # TypeScript config scoped to test files only
 ├── .env.example                   # Env template (committed)
 ├── .env                           # Local env values (gitignored)
 ├── CLAUDE.md                      # This file
@@ -196,9 +196,7 @@ New variables must be added to: `.env.example` + `tests/helpers/env.ts` + GitHub
 - Workers: 2 in CI (up from 1 — GitHub runners handle 2 workers stably for this suite size)
 - Manual trigger: `grep` input for tag filtering + `environment` input for target env
 - Artifacts: Playwright report, Allure report (always), traces/screenshots/videos (on failure)
-- Allure executor.json and environment.properties generated per run — populates 
-  EXECUTORS (CI run link, build number, browser) and ENVIRONMENT (Base URL, branch, 
-  commit, target env) sections in Allure report
+- Allure `executor.json` and `environment.properties` generated per run — populates EXECUTORS (CI run link, build number, browser) and ENVIRONMENT (Base URL, branch, commit, target env) sections in Allure report
 
 ### Nightly Regression (`nightly.yml`)
 
@@ -207,10 +205,8 @@ New variables must be added to: `.env.example` + `tests/helpers/env.ts` + GitHub
 - Gates: `type:check` → `lint` → Playwright tests (same as PR pipeline)
 - Manual trigger: `grep` input + `environment` input + `project` input (single browser)
 - Per-browser artifacts: Playwright report, Allure report, traces on failure
-- Allure executor.json and environment.properties generated per run — populates 
-  EXECUTORS (CI run link, build number, browser) and ENVIRONMENT (Base URL, branch, 
-  commit, target env) sections in Allure report
-  
+- Allure `executor.json` and `environment.properties` generated per run — same as PR pipeline but with browser name from matrix
+
 ### Allure Report — GitHub Pages (`pages.yml`)
 
 - Triggers: after every completed `E2E Tests` run on `tests/e2e-suite`, `dev`, `main`
@@ -309,24 +305,29 @@ Done. Both `e2e.yml` and `nightly.yml` updated with:
 Done. Auto-publishes Allure HTML report to `gh-pages` branch after every `e2e.yml` run.
 Live report: https://chamleck.github.io/realworld-playwright-demo
 
-- `pages.yml` workflow: triggers on `E2E Tests` completion, downloads `allure-results`
-  artifact, restores `allure-history` from `gh-pages`, generates report with trend data,
-  deploys via `peaceiris/actions-gh-pages`
-- `tests/allure-config/categories.json` — classifies FK constraint bug as "Known bugs"
-  category in Allure report; copied into `allure-results/` before report generation
+- `pages.yml` workflow: triggers on `E2E Tests` completion, downloads `allure-results` artifact, restores `allure-history` from `gh-pages`, generates report with trend data, deploys via `peaceiris/actions-gh-pages`
+- `tests/allure-config/categories.json` — classifies FK constraint bug as "Known bugs" category in Allure report; copied into `allure-results/` before report generation
 - `allure-results/` uploaded as artifact in `e2e.yml` and `nightly.yml` for Pages workflow
-- `$GITHUB_STEP_SUMMARY` in both workflows — adds clickable link to live report in
-  each pipeline run's Summary tab
+- `$GITHUB_STEP_SUMMARY` in both workflows — adds clickable link to live report in each pipeline run's Summary tab
+- `executor.json` and `environment.properties` generated per run — populates EXECUTORS and ENVIRONMENT sections in Allure report
 - GitHub Pages configured to serve from `gh-pages` branch
 
-### M4.6 — Documentation polish
+### M4.6 — Documentation polish ✅
 
-README with CI status badges, Playwright version badge, link to live Allure report,
-architecture diagram, quick start guide, "how to evaluate" section for recruiters.
+Done. README and CLAUDE.md updated with:
+
+- README badges at the top: E2E Tests status, Nightly Regression status, Playwright version, License
+- "How to evaluate this project" moved to the top of README (right after "About") so reviewers see entry points immediately
+- "Why Playwright over Cypress" comparison table added — documents key technical decisions
+- Architecture diagram wrapped in code block to prevent GitHub UI from collapsing whitespace
+- Branch strategy and Project structure in CLAUDE.md wrapped in code blocks for consistent rendering
+- "Allure 3 upgrade" added to Future improvements as known future enhancement
+- WebKit installation time documented in Known quirks (see below)
 
 ## M5 — Optional Enhancements (not planned for now)
 
 - **Parallel sharding** — split tests across multiple GitHub Actions runners via matrix `--shard=N/M`. Worthwhile at ~100+ tests; for the current 22-test suite the runner startup overhead exceeds the benefit.
+- **Allure 3 upgrade** — `allure-playwright@3.x` already installed; CLI upgrade from `allure-commandline@2.x` to the new `allure` package brings redesigned UI and plugin system. Deferred — current setup works correctly.
 - Project Dependencies as alternative to globalSetup — mention in README as an architectural alternative
 - Flake stabilization analysis — after 10+ CI runs
 - API tests layer alongside E2E
@@ -386,6 +387,10 @@ Firefox and WebKit occasionally abort navigation (`NS_BINDING_ABORTED` / "interr
 **Fix**: add `waitForLoadState('networkidle')` inside the Page Object method that triggers the redirect (`logout()`, `clickDelete()`). This ensures the redirect completes before the next navigation starts. Applied in `ProfilePage.logout()` and `ArticlePage.clickDelete()`.
 
 Nightly jobs for Firefox and mobile-safari also run with `--workers=1` to reduce parallel load on CI runners.
+
+### WebKit installation time in CI
+
+Installing WebKit via `npx playwright install --with-deps webkit` on GitHub Actions `ubuntu-latest` takes 10-15 minutes — significantly longer than Chromium (~1 min) or Firefox (~2 min). This is expected: WebKit requires ~180 system-level dependencies on Linux. The nightly `mobile-safari` job has a 30-minute timeout to accommodate this. This is the cost of testing against a real WebKit engine rather than a user-agent simulation — unlike Cypress which cannot run real Safari tests at all.
 
 ---
 
