@@ -101,6 +101,7 @@ Fixtures call Helpers (tests/helpers/)
 - Artifacts: Playwright HTML report + Allure report (always), traces/screenshots/videos (on failure only).
 - **Docker considered and deprioritized**: GitHub Actions `ubuntu-latest` runners provide a clean, reproducible environment per run. Docker would add complexity and image pull time without meaningful benefit at this scale.
 - **Allure report** (`pages.yml`): auto-published to [GitHub Pages](https://chamleck.github.io/realworld-playwright-demo) after every E2E run. Each pipeline run shows a direct link in its Summary tab.
+- Each run generates Allure executor info and environment properties — visible in the live report's EXECUTORS and ENVIRONMENT sections.
 
 ### Multi-environment support
 

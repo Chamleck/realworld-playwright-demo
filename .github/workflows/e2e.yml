@@ -107,6 +107,40 @@ jobs:
       - name: Run E2E tests (Chromium only)
         run: npx playwright test --project=chromium ${{ github.event.inputs.grep && format('--grep "{0}"', github.event.inputs.grep) || '' }}
 
+      # Create Allure executor info — populates EXECUTORS section in report.
+      # Shows which CI run produced this report with a direct link to the run.
+      - name: Create Allure executor info
+        if: always()
+        run: |
+          mkdir -p allure-results
+          cat > allure-results/executor.json << EOF
+          {
+            "name": "GitHub Actions",
+            "type": "github",
+            "url": "https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}",
+            "buildOrder": ${{ github.run_number }},
+            "buildName": "Run #${{ github.run_number }} — chromium",
+            "buildUrl": "https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}",
+            "reportUrl": "https://chamleck.github.io/realworld-playwright-demo",
+            "reportName": "Allure Report"
+          }
+          EOF
+
+      # Create Allure environment properties — populates ENVIRONMENT section.
+      # Shows key facts about the test run for stakeholders.
+      - name: Create Allure environment properties
+        if: always()
+        run: |
+          mkdir -p allure-results
+          cat > allure-results/environment.properties << EOF
+          Browser=chromium
+          Base URL=${{ env.BASE_URL }}
+          Target environment=${{ github.event.inputs.environment || 'dev' }}
+          Branch=${{ github.ref_name }}
+          Commit=${{ github.sha }}
+          Run number=${{ github.run_number }}
+          EOF
+
       # Copy categories.json into allure-results before generating report
       # so Allure classifies known bugs correctly in the report.
       - name: Copy Allure categories config
