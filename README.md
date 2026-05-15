@@ -1,5 +1,10 @@
 # RealWorld Playwright Demo
 
+![E2E Tests](https://github.com/Chamleck/realworld-playwright-demo/actions/workflows/e2e.yml/badge.svg?branch=tests%2Fe2e-suite)
+![Nightly Regression](https://github.com/Chamleck/realworld-playwright-demo/actions/workflows/nightly.yml/badge.svg)
+![Playwright](https://img.shields.io/badge/playwright-1.59-blue)
+![License](https://img.shields.io/badge/license-MIT-green)
+
 > End-to-end test automation portfolio project: **Playwright + TypeScript** framework built from scratch against a RealWorld (Conduit) full-stack application.
 
 ## About this repository
@@ -7,6 +12,18 @@
 This project demonstrates how to build a scalable, maintainable E2E test automation framework from scratch. The application under test is a [RealWorld](https://github.com/gothinkster/realworld) Medium.com clone ("Conduit") built on Next.js 14 + tRPC + Prisma + SQLite.
 
 See [APPLICATION.md](./APPLICATION.md) for the app architecture.
+
+## How to evaluate this project
+
+If you're reviewing this as a portfolio piece:
+
+1. **View the live Allure report** — [open the report](https://chamleck.github.io/realworld-playwright-demo) to see step hierarchy, trace attachments, trend graphs, EXECUTORS/ENVIRONMENT data, and bug categorization — no setup required.
+2. **Read the PRs** — each branch opens a PR showing a distinct phase of building the framework.
+3. **Look at the architecture** — `tests/` folder structure, separation of helpers/fixtures/pages/specs.
+4. **Check the CI** — `.github/workflows/` for pipeline design, multi-environment strategy, artifact handling, matrix strategy.
+5. **Run the tests locally** — `npm test` to see it work end-to-end (see Quick start below).
+6. **Open the Allure report locally** — run `npm run allure:report` after `npm test` to explore step hierarchy and trace attachments.
+7. **Read CLAUDE.md** — documents every architectural decision including tradeoffs and things explicitly not done (and why).
 
 ## Branch strategy
 
@@ -91,6 +108,20 @@ Fixtures call Helpers (tests/helpers/)
 | `mobile-chrome` | Pixel 7 (412×915) | Blink |
 | `mobile-safari` | iPhone 13 (390×844) | WebKit |
 
+### Why Playwright over Cypress
+
+| | Playwright | Cypress |
+|---|---|---|
+| **Browser engines** | Real Chromium, Firefox, WebKit | Chromium only (Safari simulated via user-agent) |
+| **Parallelism** | Native, cross-file, no extra config | Requires paid Cloud or complex setup |
+| **Auth strategy** | `storageState` — inject session without UI login | `cy.session()` — less flexible |
+| **Multiple origins** | Supported natively | Restricted by same-origin policy |
+| **Mobile testing** | Real device emulation via WebKit/Blink | Limited viewport simulation |
+| **Language** | TypeScript-first, standard Node.js | Custom Cypress API, limited TS support |
+| **Trace viewer** | Built-in, detailed DOM snapshots | Dashboard (paid) or basic video |
+
+Key decision: this project tests a Next.js app with JWT auth in `localStorage`. Playwright's `storageState` lets us inject an authenticated session without going through the login UI on every test — Cypress has no equivalent for `localStorage`-based auth. Combined with real WebKit support for mobile-safari testing (impossible in Cypress), Playwright was the clear choice.
+
 ### CI/CD
 
 - **PR pipeline** (`e2e.yml`): Chromium only, runs on every push/PR. Target < 5 minutes.
@@ -127,7 +158,7 @@ Both workflows support `dev`, `staging`, and `production` environments via a `wo
 
 ### Auth strategy
 
-`globalSetup` logs in once via tRPC API → saves session to `storageState.json`. Tests use:
+`globalSetup` logs in once via tRPC API → writes `storageState.json` directly (no browser needed). Tests use:
 - `authedPage` — page pre-loaded with the global user's session (fast, no UI login). Trace recording starts on context creation — `trace.zip` attached to Allure report on failure.
 - `authedTestUserPage` — page authenticated as a freshly created `testUser` via API (for profile tests that mutate user data). Also records traces on failure.
 - plain `page` — anonymous browser context (no auth)
@@ -156,19 +187,6 @@ TEST_USER_USERNAME="globalTestUser"
 
 All variables are validated at startup via zod — missing or malformed values fail immediately with a clear error.
 
-## How to evaluate this project
-
-If you're reviewing this as a portfolio piece:
-
-1. **Read the PRs** — each branch opens a PR showing a distinct phase of building the framework.
-2. **View the live Allure report** — [open the report](https://chamleck.github.io/realworld-playwright-demo) to see step hierarchy, trace attachments, trend graphs, and bug categorization — no setup required.
-3. **Look at the architecture** — `tests/` folder structure, separation of helpers/fixtures/pages/specs.
-4. **Open the Allure report** — run `npm run allure:report` after `npm test` to see step hierarchy, trace attachments, and test categorization.
-5. **Check the CI** — `.github/workflows/` for pipeline design, multi-environment strategy, artifact handling, matrix strategy.
-6. **Run the tests** — `npm test` to see it work end-to-end.
-7. **Read CLAUDE.md** — documents every architectural decision including tradeoffs and things explicitly not done (and why).
-
-
 ## Future improvements
 
 - **Parallel sharding** — split tests across multiple GitHub Actions runners via `--shard=N/M`. Currently deprioritized: for 22 tests, runner startup overhead (~2-3 min per shard) exceeds the parallelization benefit. Becomes worthwhile at ~100+ tests.
@@ -176,6 +194,7 @@ If you're reviewing this as a portfolio piece:
 - **API test layer** — complement E2E tests with direct tRPC API tests.
 - **Flake analysis** — after 10+ CI runs, analyze retry patterns to identify and stabilize flaky tests.
 - **Mobile viewport tests** — dedicated mobile-specific test scenarios.
+- **Allure 3 upgrade** — `allure-playwright@3.x` is already installed; upgrading CLI from `allure-commandline` to the new `allure` package brings a redesigned UI with improved trend graphs and plugin system.
 
 ## License
 
