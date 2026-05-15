@@ -53,7 +53,8 @@ main                         ← application under test only (no tests)
 realworld-playwright-demo/
 ├── .github/workflows/
 │   ├── e2e.yml                    # PR pipeline — Chromium only, fast feedback
-│   └── nightly.yml                # Full regression — all 4 browsers, nightly schedule
+│   ├── nightly.yml                # Full regression — all 4 browsers, nightly schedule
+│   └── pages.yml                  # Allure report publisher — deploys to GitHub Pages after E2E run
 ├── prisma/
 │   ├── base.sqlite                # Seed database (committed, never modified)
 │   ├── database.sqlite            # Dev DB (created by npm install, gitignored)
@@ -195,6 +196,9 @@ New variables must be added to: `.env.example` + `tests/helpers/env.ts` + GitHub
 - Workers: 2 in CI (up from 1 — GitHub runners handle 2 workers stably for this suite size)
 - Manual trigger: `grep` input for tag filtering + `environment` input for target env
 - Artifacts: Playwright report, Allure report (always), traces/screenshots/videos (on failure)
+- Allure executor.json and environment.properties generated per run — populates 
+  EXECUTORS (CI run link, build number, browser) and ENVIRONMENT (Base URL, branch, 
+  commit, target env) sections in Allure report
 
 ### Nightly Regression (`nightly.yml`)
 
@@ -203,7 +207,10 @@ New variables must be added to: `.env.example` + `tests/helpers/env.ts` + GitHub
 - Gates: `type:check` → `lint` → Playwright tests (same as PR pipeline)
 - Manual trigger: `grep` input + `environment` input + `project` input (single browser)
 - Per-browser artifacts: Playwright report, Allure report, traces on failure
-
+- Allure executor.json and environment.properties generated per run — populates 
+  EXECUTORS (CI run link, build number, browser) and ENVIRONMENT (Base URL, branch, 
+  commit, target env) sections in Allure report
+  
 ### Allure Report — GitHub Pages (`pages.yml`)
 
 - Triggers: after every completed `E2E Tests` run on `tests/e2e-suite`, `dev`, `main`
