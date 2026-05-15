@@ -82,22 +82,25 @@ npm test
 ## Architecture
 
 ### Test framework layers
+
+<pre>
 Specs (tests/e2e/*.spec.ts)
-├── use Fixtures (tests/fixtures/test-fixtures.ts)
-│     ├── authedPage         — browser with pre-loaded auth session (global user)
-│     ├── testUser           — unique user seeded in DB, cleaned up after test
-│     ├── authedTestUserPage — browser authenticated as testUser (for profile tests)
-│     ├── seededArticle      — article created via API, cleaned up after test
-│     └── profileUpdate      — unique profile data generated per test (parallel-safe)
-├── use Page Objects (tests/pages/Page.ts)
-│     └── encapsulate selectors and page interactions (BasePage + 6 page classes)
-│         all action methods wrapped in test.step() for granular Allure reporting
-└── use Test Data (tests/fixtures/data/.json)
-└── typed JSON templates for users, articles, comments
+  ├── Fixtures (tests/fixtures/test-fixtures.ts)
+  │     ├── authedPage         — browser with pre-loaded auth session (global user)
+  │     ├── testUser           — unique user seeded in DB, cleaned up after test
+  │     ├── authedTestUserPage — browser authenticated as testUser (for profile tests)
+  │     ├── seededArticle      — article created via API, cleaned up after test
+  │     └── profileUpdate      — unique profile data generated per test (parallel-safe)
+  ├── Page Objects (tests/pages/*Page.ts)
+  │     └── BasePage + 6 page classes, all action methods wrapped in test.step()
+  └── Test Data (tests/fixtures/data/*.json)
+        └── typed JSON templates for users, articles, comments
+
 Fixtures call Helpers (tests/helpers/)
-├── db.ts  — Prisma: seedUser, deleteUser, deleteArticle
-├── api.ts — tRPC: loginViaAPI, registerViaAPI, createArticleViaAPI
-└── env.ts — zod-validated environment variables
+  ├── db.ts  — Prisma: seedUser, deleteUser, deleteArticle
+  ├── api.ts — tRPC: loginViaAPI, registerViaAPI, createArticleViaAPI
+  └── env.ts — zod-validated environment variables
+</pre>
 
 ### Browser coverage
 
