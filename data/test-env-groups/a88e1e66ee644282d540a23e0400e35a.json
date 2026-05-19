@@ -1,1 +1,1 @@
-{"id":"a88e1e66ee644282d540a23e0400e35a","fullName":"auth.spec.ts:88:9","name":"should reject: Invalid email format (not an email)","status":"passed","testResultsByEnv":{"default":"2381c64eff84202da700af8bb80e6f53"}}
+{"id":"a88e1e66ee644282d540a23e0400e35a","fullName":"auth.spec.ts:88:9","name":"should reject: Invalid email format (not an email)","status":"passed","testResultsByEnv":{"default":"620e0323f5aa1964cc8fdf7c49ac58d3"}}
