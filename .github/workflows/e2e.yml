@@ -141,12 +141,6 @@ jobs:
           Run number=${{ github.run_number }}
           EOF
 
-      # Copy categories.json into allure-results before generating report
-      # so Allure classifies known bugs correctly in the report.
-      - name: Copy Allure categories config
-        if: always()
-        run: cp tests/allure-config/categories.json allure-results/categories.json
-
       - name: Generate Allure report
         if: always()
         run: npm run allure:generate

@@ -33,7 +33,7 @@ The system under test (SUT) is a [RealWorld](https://github.com/gothinkster/real
 ### Test framework
 
 - **Playwright 1.59** + **TypeScript**
-- **Allure** reporter (`allure-playwright` + `allure-commandline`) — installed and configured; generates rich HTML reports with step hierarchy, trace attachments, and trend history
+- **Allure 3** reporter (`allure-playwright@3.x` + `allure@3.x`) — Allure 3 CLI with new Awesome UI, JSONL-based history, configured via `allurerc.json`
 - **Playwright Trace Viewer** (built-in) — trace.zip attached directly to Allure report on failure; link to `trace.playwright.dev` included for online viewing
 - **GitHub Actions** — PR pipeline (Chromium) + nightly regression (all browsers)
 - **dotenv** + **zod** for typed, validated env loading
@@ -62,8 +62,6 @@ realworld-playwright-demo/
 │   └── schema.prisma              # Prisma schema
 ├── src/                           # Application source (do not modify)
 ├── tests/
-│   ├── allure-config/
-│   │   └── categories.json        # Allure categories for known bug classification
 │   ├── auth/
 │   │   └── .storage-state.json    # Saved auth state (gitignored, created by globalSetup)
 │   ├── e2e/                       # Spec files: auth.spec.ts, articles.spec.ts, profile.spec.ts
@@ -81,6 +79,7 @@ realworld-playwright-demo/
 ├── globalSetup.ts                 # Runs before all tests: reset DB, save storageState
 ├── globalTeardown.ts              # Runs after all tests: disconnect Prisma
 ├── playwright.config.ts           # 4 browser projects, webServer, reporters
+├── allurerc.json                  # Allure 3 configuration — output, historyPath, plugins
 ├── tsconfig.test.json             # TypeScript config scoped to test files only
 ├── .env.example                   # Env template (committed)
 ├── .env                           # Local env values (gitignored)
@@ -210,7 +209,7 @@ New variables must be added to: `.env.example` + `tests/helpers/env.ts` + GitHub
 ### Allure Report — GitHub Pages (`pages.yml`)
 
 - Triggers: after every completed `E2E Tests` run on `tests/e2e-suite`, `dev`, `main`
-- Restores allure-history from `gh-pages` for trend graphs
+- Restores `allure-history.jsonl` from `gh-pages` for trend graphs (Allure 3 JSONL format, replaces Allure 2's `history/` folder)
 - Publishes live report to `https://chamleck.github.io/realworld-playwright-demo`
 - Summary link added to every pipeline run
 
@@ -324,14 +323,26 @@ Done. README and CLAUDE.md updated with:
 - "Allure 3 upgrade" added to Future improvements as known future enhancement
 - WebKit installation time documented in Known quirks (see below)
 
-## M5 — Optional Enhancements (not planned for now)
+## M5 — Optional Enhancements
 
 - **Parallel sharding** — split tests across multiple GitHub Actions runners via matrix `--shard=N/M`. Worthwhile at ~100+ tests; for the current 22-test suite the runner startup overhead exceeds the benefit.
-- **Allure 3 upgrade** — `allure-playwright@3.x` already installed; CLI upgrade from `allure-commandline@2.x` to the new `allure` package brings redesigned UI and plugin system. Deferred — current setup works correctly.
+- **Per-run Allure reports** — publish each CI run's report to a separate URL on GitHub Pages (M5.2, not yet implemented).
 - Project Dependencies as alternative to globalSetup — mention in README as an architectural alternative
 - Flake stabilization analysis — after 10+ CI runs
 - API tests layer alongside E2E
 - Mobile viewport tests
+
+### M5.1 — Allure 3 upgrade ✅
+
+Done. Replaced `allure-commandline@2.x` with `allure@3.x` (new TypeScript-based CLI).
+
+- New Awesome UI with improved visualization and navigation
+- `allurerc.json` added to project root — configures output, historyPath, plugins
+- `historyPath: ./allure-history.jsonl` — Allure 3 uses single JSONL file instead of Allure 2's `history/` folder
+- `appendHistory: true` — history accumulates between runs
+- `pages.yml` updated — restores/saves `allure-history.jsonl` instead of `history/` folder
+- npm scripts updated — new `allure generate` syntax (no `--clean` flag, different arg order)
+- `test:with-report` clears `allure-results/` before run to prevent result accumulation
 
 ---
 

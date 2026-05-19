@@ -1,6 +1,7 @@
 # RealWorld Playwright Demo
 
 ![E2E Tests](https://github.com/Chamleck/realworld-playwright-demo/actions/workflows/e2e.yml/badge.svg?branch=tests%2Fe2e-suite)
+![Allure](https://img.shields.io/badge/allure-3.8.2-orange)
 ![Nightly Regression](https://github.com/Chamleck/realworld-playwright-demo/actions/workflows/nightly.yml/badge.svg)
 ![Playwright](https://img.shields.io/badge/playwright-1.59-blue)
 ![License](https://img.shields.io/badge/license-MIT-green)
@@ -136,6 +137,7 @@ Key decision: this project tests a Next.js app with JWT auth in `localStorage`. 
 - **Docker considered and deprioritized**: GitHub Actions `ubuntu-latest` runners provide a clean, reproducible environment per run. Docker would add complexity and image pull time without meaningful benefit at this scale.
 - **Allure report** (`pages.yml`): auto-published to [GitHub Pages](https://chamleck.github.io/realworld-playwright-demo) after every E2E run. Each pipeline run shows a direct link in its Summary tab.
 - Each run generates Allure executor info and environment properties — visible in the live report's EXECUTORS and ENVIRONMENT sections.
+- **Allure 3** (`allure@3.x`) — new Awesome UI with improved visualization, JSONL-based history tracking.
 
 ### Multi-environment support
 
@@ -197,7 +199,7 @@ All variables are validated at startup via zod — missing or malformed values f
 - **API test layer** — complement E2E tests with direct tRPC API tests.
 - **Flake analysis** — after 10+ CI runs, analyze retry patterns to identify and stabilize flaky tests.
 - **Mobile viewport tests** — dedicated mobile-specific test scenarios.
-- **Allure 3 upgrade** — `allure-playwright@3.x` is already installed; upgrading CLI from `allure-commandline` to the new `allure` package brings a redesigned UI with improved trend graphs and plugin system.
+- **Per-run Allure reports** — publish each CI run's report to a separate URL on GitHub Pages, enabling direct comparison between runs.
 
 ## License
 
