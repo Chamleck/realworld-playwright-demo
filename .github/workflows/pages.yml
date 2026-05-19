@@ -2,14 +2,15 @@
 # Allure Report — GitHub Pages Publisher
 # =============================================================================
 #
-# Runs after every successful E2E Tests run on tests/e2e-suite or dev branches.
-# Downloads allure-results artifact, restores allure-history from gh-pages,
-# generates a fresh Allure report with trend graphs, and publishes to gh-pages.
+# Runs after every completed E2E Tests run on tests/e2e-suite, dev, main.
+# Downloads allure-results artifact, restores allure-history.jsonl from gh-pages,
+# generates a fresh Allure 3 report with trend graphs, and publishes to gh-pages.
 #
 # Live report: https://chamleck.github.io/realworld-playwright-demo
 #
 # History preservation:
-#   allure-history/ is stored in the gh-pages branch between runs.
+#   allure-history.jsonl is stored in the gh-pages branch between runs.
+#   Allure 3 uses a single JSONL file for history (vs Allure 2's history/ folder).
 #   Each new report includes trend data from all previous runs —
 #   pass/fail over time, flakiness detection, duration trends.
 
@@ -41,7 +42,6 @@ jobs:
         with:
           fetch-depth: 0
 
-
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
@@ -60,24 +60,22 @@ jobs:
           run-id: ${{ github.event.workflow_run.id }}
           github-token: ${{ secrets.GITHUB_TOKEN }}
 
-      # Restore allure-history from gh-pages branch to preserve trend data.
+      # Restore allure-history.jsonl from gh-pages branch to preserve trend data.
+      # Allure 3 uses a single JSONL file instead of Allure 2's history/ folder.
       # If gh-pages doesn't exist yet (first run), this step is skipped gracefully.
       - name: Restore Allure history from gh-pages
         continue-on-error: true
         run: |
           git fetch origin gh-pages --depth=1
-          mkdir -p allure-results/history
-          git checkout origin/gh-pages -- history/ 2>/dev/null || true
-          cp -r history/. allure-results/history/ 2>/dev/null || true
+          git checkout origin/gh-pages -- allure-history.jsonl 2>/dev/null || true
 
       - name: Generate Allure report with history
         run: npm run allure:generate
 
-      # History is already in allure-report/history/ after generation.
-      # peaceiris/actions-gh-pages will publish it to gh-pages automatically.
+      # allure-history.jsonl is updated by allure generate (appendHistory: true in allurerc.json).
+      # Copy it into allure-report/ so peaceiris publishes it to gh-pages for the next run.
       - name: Preserve history for next run
-        run: echo "History preserved in allure-report/history/"
-          
+        run: cp allure-history.jsonl allure-report/allure-history.jsonl 2>/dev/null || true
 
       # Publish allure-report/ to gh-pages branch.
       # peaceiris/actions-gh-pages creates the branch if it doesn't exist.
