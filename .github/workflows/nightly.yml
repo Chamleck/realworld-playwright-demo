@@ -196,11 +196,14 @@ jobs:
   # Publish per-browser Allure reports to GitHub Pages.
   # Each browser/device gets its own report URL: /{browser}/runs/{run-number}/
   # History is preserved per browser for trend analysis.
-  # Jobs run sequentially via concurrency group in pages.yml to avoid git conflicts.
+  # Per-browser concurrency groups prevent git conflicts without cancelling jobs.
   publish:
     name: Publish — ${{ matrix.project }}
     needs: nightly
     if: always()
+    concurrency:
+      group: gh-pages-publish-${{ matrix.project }}
+      cancel-in-progress: false
     strategy:
       fail-fast: false
       matrix:
