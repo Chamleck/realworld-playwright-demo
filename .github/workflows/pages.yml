@@ -42,12 +42,6 @@ on:
         type: number
         default: 20
 
-# Serialize all publish jobs to prevent git push conflicts on gh-pages.
-# cancel-in-progress: false ensures all runs complete — no reports are lost.
-concurrency:
-  group: gh-pages-publish
-  cancel-in-progress: false
-
 jobs:
   publish:
     name: Publish — ${{ inputs.browser }}
