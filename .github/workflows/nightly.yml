@@ -193,19 +193,17 @@ jobs:
           path: test-results/
           retention-days: 7
 
-  # Publish per-browser Allure reports to GitHub Pages.
+  # Publish per-browser Allure reports to GitHub Pages sequentially.
+  # max-parallel: 1 ensures browsers publish one at a time — prevents
+  # git push conflicts on gh-pages branch.
   # Each browser/device gets its own report URL: /{browser}/runs/{run-number}/
-  # History is preserved per browser for trend analysis.
-  # Per-browser concurrency groups prevent git conflicts without cancelling jobs.
   publish:
     name: Publish — ${{ matrix.project }}
     needs: nightly
     if: always()
-    concurrency:
-      group: gh-pages-publish-${{ matrix.project }}
-      cancel-in-progress: false
     strategy:
       fail-fast: false
+      max-parallel: 1
       matrix:
         project: [chromium, firefox, mobile-chrome, mobile-safari]
     uses: ./.github/workflows/pages.yml
