@@ -18,7 +18,7 @@ See [APPLICATION.md](./APPLICATION.md) for the app architecture.
 
 If you're reviewing this as a portfolio piece:
 
-1. **View the live Allure report** — [open the report](https://chamleck.github.io/realworld-playwright-demo) to see step hierarchy, trace attachments, trend graphs, EXECUTORS/ENVIRONMENT data, and bug categorization — no setup required.
+1. **View the Allure reports** — [open the index](https://chamleck.github.io/realworld-playwright-demo) to browse reports per browser/device and run. Each CI run has its own URL — no setup required.
 2. **Read the PRs** — each branch opens a PR showing a distinct phase of building the framework.
 3. **Look at the architecture** — `tests/` folder structure, separation of helpers/fixtures/pages/specs.
 4. **Check the CI** — `.github/workflows/` for pipeline design, multi-environment strategy, artifact handling, matrix strategy.
@@ -71,7 +71,11 @@ npm test
 | `npm run test:debug` | Step-by-step debugging with DevTools |
 | `npm run test:grep -- @smoke` | Run tests by tag |
 | `npm run test:list` | List all tests without running |
-| `npm run test:with-report` | Tests + generate and open Allure report |
+| `npm run test:with-report` | All tests + Allure report (history: local) |
+| `npm run test:with-report:chromium` | Chromium tests + Allure report with chromium history |
+| `npm run test:with-report:firefox` | Firefox tests + Allure report with firefox history |
+| `npm run test:with-report:mobile-chrome` | Mobile Chrome tests + Allure report |
+| `npm run test:with-report:mobile-safari` | Mobile Safari tests + Allure report |
 | `npm run test:report` | Open Playwright HTML report |
 | `npm run test:trace` | Open Trace Viewer |
 | `npm run allure:generate` | Generate Allure report from allure-results/ |
@@ -135,8 +139,8 @@ Key decision: this project tests a Next.js app with JWT auth in `localStorage`. 
 - Workers: 2 in CI — GitHub runners handle 2 parallel workers stably for this suite size.
 - Artifacts: Playwright HTML report + Allure report (always), traces/screenshots/videos (on failure only).
 - **Docker considered and deprioritized**: GitHub Actions `ubuntu-latest` runners provide a clean, reproducible environment per run. Docker would add complexity and image pull time without meaningful benefit at this scale.
-- **Allure report** (`pages.yml`): auto-published to [GitHub Pages](https://chamleck.github.io/realworld-playwright-demo) after every E2E run. Each pipeline run shows a direct link in its Summary tab.
-- Each run generates Allure executor info and environment properties — visible in the live report's EXECUTORS and ENVIRONMENT sections.
+- **Allure report** (`pages.yml`): reusable workflow publishing each run to its own URL — `/{browser}/runs/{run-number}/`. History tracked per browser/device. Retention keeps last 20 runs. Navigation index at [GitHub Pages](https://chamleck.github.io/realworld-playwright-demo).
+- Each pipeline job's Summary shows a direct link to that specific run's Allure report.
 - **Allure 3** (`allure@3.x`) — new Awesome UI with improved visualization, JSONL-based history tracking.
 
 ### Multi-environment support
@@ -199,7 +203,6 @@ All variables are validated at startup via zod — missing or malformed values f
 - **API test layer** — complement E2E tests with direct tRPC API tests.
 - **Flake analysis** — after 10+ CI runs, analyze retry patterns to identify and stabilize flaky tests.
 - **Mobile viewport tests** — dedicated mobile-specific test scenarios.
-- **Per-run Allure reports** — publish each CI run's report to a separate URL on GitHub Pages, enabling direct comparison between runs.
 
 ## License
 

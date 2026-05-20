@@ -16,6 +16,7 @@
     "initialize:revert": "shx rm -f .env && shx rm -f prisma/database.sqlite",
     "initialize:fresh": "npm run initialize:revert && npm run initialize",
     "postinstall": "npm run initialize && prisma generate && prisma db push",
+
     "test": "npx playwright test",
     "test:headed": "npx playwright test --headed",
     "test:ui": "npx playwright test --ui",
@@ -27,7 +28,13 @@
     "test:trace": "npx playwright show-trace",
     "test:report": "npx playwright show-report",
     "test:list": "npx playwright test --list",
-    "test:with-report": "shx rm -rf allure-results && npx playwright test && npm run allure:report",
+
+    "test:with-report": "shx rm -rf allure-results allure-report && npx playwright test && npm run allure:report",
+    "test:with-report:chromium": "shx rm -rf allure-results allure-report && npx playwright test --project=chromium && cross-env ALLURE_BROWSER=chromium npm run allure:report",
+    "test:with-report:firefox": "shx rm -rf allure-results allure-report && npx playwright test --project=firefox && cross-env ALLURE_BROWSER=firefox npm run allure:report",
+    "test:with-report:mobile-chrome": "shx rm -rf allure-results allure-report && npx playwright test --project=mobile-chrome && cross-env ALLURE_BROWSER=mobile-chrome npm run allure:report",
+    "test:with-report:mobile-safari": "shx rm -rf allure-results allure-report && npx playwright test --project=mobile-safari && cross-env ALLURE_BROWSER=mobile-safari npm run allure:report",
+
     "allure:generate": "allure generate --output allure-report allure-results",
     "allure:open": "allure open allure-report",
     "allure:report": "npm run allure:generate && npm run allure:open"

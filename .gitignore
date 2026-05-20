@@ -77,7 +77,7 @@ yarn-error.log*
 /allure-results/
 /allure-report/
 # Allure 3 history file — generated locally, not committed
-/allure-history.jsonl
+/allure-history/
 # Allure report v3 temp folder — generated locally
 /allure-report-v3/
 
