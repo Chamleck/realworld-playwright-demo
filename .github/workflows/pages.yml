@@ -1,36 +1,58 @@
 # =============================================================================
-# Allure Report — GitHub Pages Publisher
+# Allure Report — GitHub Pages Publisher (Reusable Workflow)
 # =============================================================================
 #
-# Runs after every completed E2E Tests run on tests/e2e-suite, dev, main.
-# Downloads allure-results artifact, restores allure-history.jsonl from gh-pages,
-# generates a fresh Allure 3 report with trend graphs, and publishes to gh-pages.
+# Publishes a per-run Allure report to GitHub Pages under:
+#   {browser}/runs/{run-number}/
 #
-# Live report: https://chamleck.github.io/realworld-playwright-demo
+# History is preserved per browser/device project:
+#   {browser}/allure-history.jsonl
 #
-# History preservation:
-#   allure-history.jsonl is stored in the gh-pages branch between runs.
-#   Allure 3 uses a single JSONL file for history (vs Allure 2's history/ folder).
-#   Each new report includes trend data from all previous runs —
-#   pass/fail over time, flakiness detection, duration trends.
+# Called by e2e.yml (browser=chromium) and nightly.yml (browser=matrix.project).
+#
+# gh-pages structure:
+#   chromium/allure-history.jsonl
+#   chromium/runs/31/
+#   chromium/runs/30/
+#   firefox/allure-history.jsonl
+#   firefox/runs/31/
+#   ...
+#   index.html  ← auto-generated navigation page
 
 name: Allure Report — GitHub Pages
 
 on:
-  workflow_run:
-    workflows: ["E2E Tests"]
-    types: [completed]
-    branches: [tests/e2e-suite, dev, main]
+  workflow_call:
+    inputs:
+      browser:
+        description: 'Browser/device project (chromium, firefox, mobile-chrome, mobile-safari)'
+        required: true
+        type: string
+      run-number:
+        description: 'GitHub Actions run number for the report folder name'
+        required: true
+        type: string
+      artifact-name:
+        description: 'Name of the allure-results artifact to download'
+        required: true
+        type: string
+      retention:
+        description: 'Number of runs to keep per browser (older runs are deleted)'
+        required: false
+        type: number
+        default: 20
+
+# Serialize all publish jobs to prevent git push conflicts on gh-pages.
+# cancel-in-progress: false ensures all runs complete — no reports are lost.
+concurrency:
+  group: gh-pages-publish
+  cancel-in-progress: false
 
 jobs:
   publish:
-    name: Publish Allure Report
+    name: Publish — ${{ inputs.browser }}
     runs-on: ubuntu-latest
     timeout-minutes: 10
-
-    # Run regardless of whether E2E Tests passed or failed —
-    # a failed run is the most important one to publish.
-    if: always()
 
     permissions:
       contents: write
@@ -51,41 +73,134 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
-      # Download allure-results from the triggering E2E Tests run
+      # Download allure-results artifact from the calling workflow run
       - name: Download allure-results artifact
         uses: actions/download-artifact@v4
         with:
-          name: allure-results
+          name: ${{ inputs.artifact-name }}
           path: allure-results/
-          run-id: ${{ github.event.workflow_run.id }}
           github-token: ${{ secrets.GITHUB_TOKEN }}
 
-      # Restore allure-history.jsonl from gh-pages branch to preserve trend data.
-      # Allure 3 uses a single JSONL file instead of Allure 2's history/ folder.
-      # If gh-pages doesn't exist yet (first run), this step is skipped gracefully.
+      # Restore per-browser history from gh-pages for trend data.
+      # On first run, gh-pages or history file may not exist — skipped gracefully.
       - name: Restore Allure history from gh-pages
         continue-on-error: true
         run: |
           git fetch origin gh-pages --depth=1
-          git checkout origin/gh-pages -- allure-history.jsonl 2>/dev/null || true
+          mkdir -p allure-history
+          git checkout origin/gh-pages -- ${{ inputs.browser }}/allure-history.jsonl 2>/dev/null || true
+          cp ${{ inputs.browser }}/allure-history.jsonl allure-history/${{ inputs.browser }}.jsonl 2>/dev/null || true
 
-      - name: Generate Allure report with history
+      # Generate Allure report with browser-specific history
+      - name: Generate Allure report
+        env:
+          ALLURE_BROWSER: ${{ inputs.browser }}
         run: npm run allure:generate
 
-      # allure-history.jsonl is updated by allure generate (appendHistory: true in allurerc.json).
-      # Copy it into allure-report/ so peaceiris publishes it to gh-pages for the next run.
-      - name: Preserve history for next run
-        run: cp allure-history.jsonl allure-report/allure-history.jsonl 2>/dev/null || true
+      # Prepare report for deployment:
+      # 1. Copy updated history back so it gets published to gh-pages
+      # 2. Stage report in browser/runs/{run-number}/ folder structure
+      - name: Prepare report for deployment
+        run: |
+          mkdir -p deploy/${{ inputs.browser }}/runs/${{ inputs.run-number }}
+          cp -r allure-report/. deploy/${{ inputs.browser }}/runs/${{ inputs.run-number }}/
+          mkdir -p deploy/${{ inputs.browser }}
+          cp allure-history/${{ inputs.browser }}.jsonl deploy/${{ inputs.browser }}/allure-history.jsonl 2>/dev/null || true
 
-      # Publish allure-report/ to gh-pages branch.
-      # peaceiris/actions-gh-pages creates the branch if it doesn't exist.
+      # Apply retention policy — keep only the latest N runs per browser.
+      # Fetches existing runs from gh-pages and removes oldest ones.
+      - name: Apply retention policy
+        continue-on-error: true
+        run: |
+          git fetch origin gh-pages --depth=1
+          RUNS=$(git ls-tree --name-only origin/gh-pages ${{ inputs.browser }}/runs/ 2>/dev/null | sort -n)
+          TOTAL=$(echo "$RUNS" | grep -c '[0-9]' || true)
+          RETENTION=${{ inputs.retention }}
+          if [ "$TOTAL" -gt "$RETENTION" ]; then
+            TO_DELETE=$(echo "$RUNS" | head -n $(($TOTAL - $RETENTION)))
+            for RUN in $TO_DELETE; do
+              echo "Removing old run: ${{ inputs.browser }}/runs/$RUN"
+              rm -rf deploy/${{ inputs.browser }}/runs/$RUN
+            done
+          fi
+
+      # Generate index.html — navigation page listing all browsers and their runs.
+      # Fetches existing runs from gh-pages and merges with current deployment.
+      - name: Generate index.html
+        run: |
+          cat > deploy/index.html << 'EOF'
+          <!DOCTYPE html>
+          <html lang="en">
+          <head>
+            <meta charset="UTF-8">
+            <meta name="viewport" content="width=device-width, initial-scale=1.0">
+            <title>RealWorld Playwright Demo — Allure Reports</title>
+            <style>
+              body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; max-width: 900px; margin: 40px auto; padding: 0 20px; color: #333; }
+              h1 { color: #1a1a2e; border-bottom: 2px solid #e8e8e8; padding-bottom: 10px; }
+              h2 { color: #16213e; margin-top: 30px; }
+              .runs { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 10px; margin-top: 10px; }
+              .run { background: #f8f9fa; border: 1px solid #e8e8e8; border-radius: 6px; padding: 12px; text-decoration: none; color: #333; transition: all 0.2s; }
+              .run:hover { background: #e8f4fd; border-color: #4a90d9; }
+              .run-number { font-weight: bold; font-size: 1.1em; }
+              .badge { display: inline-block; background: #4a90d9; color: white; border-radius: 12px; padding: 2px 8px; font-size: 0.75em; margin-left: 6px; }
+            </style>
+          </head>
+          <body>
+            <h1>🎭 RealWorld Playwright Demo</h1>
+            <p>Allure test reports per browser/device. Latest runs shown first.</p>
+            <script>
+              const BASE = 'https://chamleck.github.io/realworld-playwright-demo';
+              const browsers = ['chromium', 'firefox', 'mobile-chrome', 'mobile-safari'];
+              const labels = {
+                'chromium': '🖥️ Chromium (Desktop)',
+                'firefox': '🦊 Firefox (Desktop)',
+                'mobile-chrome': '📱 Mobile Chrome (Pixel 7)',
+                'mobile-safari': '🍎 Mobile Safari (iPhone 13)'
+              };
+              document.addEventListener('DOMContentLoaded', async () => {
+                const main = document.querySelector('body');
+                for (const browser of browsers) {
+                  try {
+                    const res = await fetch(`${BASE}/${browser}/runs/index.json`);
+                    if (!res.ok) continue;
+                    const runs = await res.json();
+                    const section = document.createElement('section');
+                    section.innerHTML = `<h2>${labels[browser] || browser}</h2><div class="runs">${
+                      runs.reverse().map(r => `<a class="run" href="${BASE}/${browser}/runs/${r}/"><span class="run-number">Run #${r}</span></a>`).join('')
+                    }</div>`;
+                    main.appendChild(section);
+                  } catch(e) {}
+                }
+              });
+            </script>
+          </body>
+          </html>
+          EOF
+
+      # Generate runs index.json for this browser — used by index.html
+      - name: Generate runs index
+        run: |
+          git fetch origin gh-pages --depth=1
+          EXISTING=$(git ls-tree --name-only origin/gh-pages ${{ inputs.browser }}/runs/ 2>/dev/null | grep -E '^[0-9]+$' | sort -n || true)
+          ALL_RUNS=$(echo -e "$EXISTING\n${{ inputs.run-number }}" | sort -nu | tr '\n' ',' | sed 's/,$//')
+          mkdir -p deploy/${{ inputs.browser }}/runs
+          echo "[$ALL_RUNS]" | sed 's/,/, /g' > deploy/${{ inputs.browser }}/runs/index.json
+
+      # Deploy to gh-pages — keep_files: true preserves other browsers' reports
       - name: Deploy to GitHub Pages
         uses: peaceiris/actions-gh-pages@v3
         with:
           github_token: ${{ secrets.GITHUB_TOKEN }}
-          publish_dir: allure-report
+          publish_dir: deploy
           publish_branch: gh-pages
-          keep_files: false
+          keep_files: true
           user_name: 'github-actions[bot]'
           user_email: 'github-actions[bot]@users.noreply.github.com'
-          commit_message: 'ci: update Allure report [${{ github.event.workflow_run.head_sha }}]'
+          commit_message: 'ci: publish ${{ inputs.browser }} report — run #${{ inputs.run-number }}'
+
+      # Update Summary with direct link to this run's report
+      - name: Publish report summary
+        run: |
+          echo "## 📊 Allure Report — ${{ inputs.browser }}" >> $GITHUB_STEP_SUMMARY
+          echo "[Open report for Run #${{ inputs.run-number }}](https://chamleck.github.io/realworld-playwright-demo/${{ inputs.browser }}/runs/${{ inputs.run-number }}/)" >> $GITHUB_STEP_SUMMARY

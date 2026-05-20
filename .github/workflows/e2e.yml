@@ -109,6 +109,7 @@ jobs:
 
       # Create Allure executor info — populates EXECUTORS section in report.
       # Shows which CI run produced this report with a direct link to the run.
+      # reportUrl points to the specific run's report on GitHub Pages.
       - name: Create Allure executor info
         if: always()
         run: |
@@ -121,7 +122,7 @@ jobs:
             "buildOrder": ${{ github.run_number }},
             "buildName": "Run #${{ github.run_number }} — chromium",
             "buildUrl": "https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}",
-            "reportUrl": "https://chamleck.github.io/realworld-playwright-demo",
+            "reportUrl": "https://chamleck.github.io/realworld-playwright-demo/chromium/runs/${{ github.run_number }}/",
             "reportName": "Allure Report"
           }
           EOF
@@ -141,8 +142,12 @@ jobs:
           Run number=${{ github.run_number }}
           EOF
 
+      # Generate Allure report — ALLURE_BROWSER tells allurerc.mjs which
+      # history file to use: allure-history/chromium.jsonl
       - name: Generate Allure report
         if: always()
+        env:
+          ALLURE_BROWSER: chromium
         run: npm run allure:generate
 
       - name: Upload Allure results
@@ -169,8 +174,19 @@ jobs:
           path: test-results/
           retention-days: 7
 
-      - name: Publish report summary
-        if: always()
-        run: |
-         echo "## 📊 Allure Report" >> $GITHUB_STEP_SUMMARY
-         echo "[Open live report](https://chamleck.github.io/realworld-playwright-demo)" >> $GITHUB_STEP_SUMMARY
+  # Publish Allure report to GitHub Pages after tests complete.
+  # Report is published to: /chromium/runs/{run-number}/
+  # History is preserved per browser for trend analysis.
+  # Summary link points to the specific run's report.
+  publish:
+    name: Publish Allure Report
+    needs: e2e
+    if: always()
+    uses: ./.github/workflows/pages.yml
+    with:
+      browser: chromium
+      run-number: ${{ github.run_number }}
+      artifact-name: allure-results
+    permissions:
+      contents: write
+      pages: write

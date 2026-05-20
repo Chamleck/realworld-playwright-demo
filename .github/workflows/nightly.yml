@@ -120,6 +120,7 @@ jobs:
 
       # Create Allure executor info — populates EXECUTORS section in report.
       # Shows which CI run produced this report with a direct link to the run.
+      # reportUrl points to the specific run's report on GitHub Pages.
       - name: Create Allure executor info
         if: always()
         run: |
@@ -132,7 +133,7 @@ jobs:
             "buildOrder": ${{ github.run_number }},
             "buildName": "Run #${{ github.run_number }} — ${{ matrix.project }}",
             "buildUrl": "https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}",
-            "reportUrl": "https://chamleck.github.io/realworld-playwright-demo",
+            "reportUrl": "https://chamleck.github.io/realworld-playwright-demo/${{ matrix.project }}/runs/${{ github.run_number }}/",
             "reportName": "Allure Report"
           }
           EOF
@@ -150,10 +151,14 @@ jobs:
           Branch=${{ github.ref_name }}
           Commit=${{ github.sha }}
           Run number=${{ github.run_number }}
-          EOF    
-          
+          EOF
+
+      # Generate Allure report — ALLURE_BROWSER tells allurerc.mjs which
+      # history file to use: allure-history/{browser}.jsonl
       - name: Generate Allure report
         if: always()
+        env:
+          ALLURE_BROWSER: ${{ matrix.project }}
         run: npm run allure:generate
 
       - name: Upload Allure results
@@ -188,8 +193,23 @@ jobs:
           path: test-results/
           retention-days: 7
 
-      - name: Publish report summary
-        if: always()
-        run: |
-         echo "## 📊 Allure Report" >> $GITHUB_STEP_SUMMARY
-         echo "[Open live report](https://chamleck.github.io/realworld-playwright-demo)" >> $GITHUB_STEP_SUMMARY
+  # Publish per-browser Allure reports to GitHub Pages.
+  # Each browser/device gets its own report URL: /{browser}/runs/{run-number}/
+  # History is preserved per browser for trend analysis.
+  # Jobs run sequentially via concurrency group in pages.yml to avoid git conflicts.
+  publish:
+    name: Publish — ${{ matrix.project }}
+    needs: nightly
+    if: always()
+    strategy:
+      fail-fast: false
+      matrix:
+        project: [chromium, firefox, mobile-chrome, mobile-safari]
+    uses: ./.github/workflows/pages.yml
+    with:
+      browser: ${{ matrix.project }}
+      run-number: ${{ github.run_number }}
+      artifact-name: allure-results-${{ matrix.project }}
+    permissions:
+      contents: write
+      pages: write
