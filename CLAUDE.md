@@ -33,7 +33,7 @@ The system under test (SUT) is a [RealWorld](https://github.com/gothinkster/real
 ### Test framework
 
 - **Playwright 1.59** + **TypeScript**
-- **Allure** reporter (`allure-playwright` + `allure-commandline`) — installed and configured; generates rich HTML reports with step hierarchy, trace attachments, and trend history
+- **Allure 3** reporter (`allure-playwright@3.x` + `allure@3.x`) — Allure 3 CLI with new Awesome UI, JSONL-based history per browser/device, configured via `allurerc.mjs`
 - **Playwright Trace Viewer** (built-in) — trace.zip attached directly to Allure report on failure; link to `trace.playwright.dev` included for online viewing
 - **GitHub Actions** — PR pipeline (Chromium) + nightly regression (all browsers)
 - **dotenv** + **zod** for typed, validated env loading
@@ -52,9 +52,9 @@ main                          ← application under test only (no tests)
 ## Project structure
 realworld-playwright-demo/
 ├── .github/workflows/
-│   ├── e2e.yml                    # PR pipeline — Chromium only, fast feedback
+│   ├── e2e.yml                    # PR pipeline — Chromium by default, browser selectable on manual trigger
 │   ├── nightly.yml                # Full regression — all 4 browsers, nightly schedule
-│   └── pages.yml                  # Allure report publisher — deploys to GitHub Pages after E2E run
+│   └── pages.yml                  # Allure report publisher — reusable workflow, per-run per-browser
 ├── prisma/
 │   ├── base.sqlite                # Seed database (committed, never modified)
 │   ├── database.sqlite            # Dev DB (created by npm install, gitignored)
@@ -62,8 +62,6 @@ realworld-playwright-demo/
 │   └── schema.prisma              # Prisma schema
 ├── src/                           # Application source (do not modify)
 ├── tests/
-│   ├── allure-config/
-│   │   └── categories.json        # Allure categories for known bug classification
 │   ├── auth/
 │   │   └── .storage-state.json    # Saved auth state (gitignored, created by globalSetup)
 │   ├── e2e/                       # Spec files: auth.spec.ts, articles.spec.ts, profile.spec.ts
@@ -81,11 +79,13 @@ realworld-playwright-demo/
 ├── globalSetup.ts                 # Runs before all tests: reset DB, save storageState
 ├── globalTeardown.ts              # Runs after all tests: disconnect Prisma
 ├── playwright.config.ts           # 4 browser projects, webServer, reporters
+├── allurerc.mjs                   # Allure 3 dynamic config — historyPath per browser via ALLURE_BROWSER env
 ├── tsconfig.test.json             # TypeScript config scoped to test files only
 ├── .env.example                   # Env template (committed)
 ├── .env                           # Local env values (gitignored)
 ├── CLAUDE.md                      # This file
-└── README.md
+├── README.md
+allure-history/                    # Per-browser history files (gitignored, generated locally)
 
 ---
 
@@ -175,7 +175,11 @@ New variables must be added to: `.env.example` + `tests/helpers/env.ts` + GitHub
 | `npm run test:debug` | Step-by-step debugging with DevTools |
 | `npm run test:grep -- @smoke` | Run tests matching a tag |
 | `npm run test:list` | List all tests without running |
-| `npm run test:with-report` | Run tests + generate and open Allure report |
+| `npm run test:with-report` | Run all tests + generate and open Allure report (history: local) |
+| `npm run test:with-report:chromium` | Chromium tests + Allure report with chromium history |
+| `npm run test:with-report:firefox` | Firefox tests + Allure report with firefox history |
+| `npm run test:with-report:mobile-chrome` | Mobile Chrome tests + Allure report with mobile-chrome history |
+| `npm run test:with-report:mobile-safari` | Mobile Safari tests + Allure report with mobile-safari history |
 | `npm run test:report` | Open Playwright HTML report |
 | `npm run test:trace` | Open Trace Viewer |
 | `npm run allure:generate` | Generate Allure report from allure-results/ |
@@ -191,28 +195,35 @@ New variables must be added to: `.env.example` + `tests/helpers/env.ts` + GitHub
 ### PR Pipeline (`e2e.yml`)
 
 - Triggers: push/PR to `setup/playwright`, `tests/e2e-suite`, `dev`, `main`
-- Browser: Chromium only (fast feedback, target < 5 min)
+- Browser: Chromium by default — any browser can be selected via `project` input on manual trigger
 - Gates: `type:check` → `lint` → Playwright tests (in order)
 - Workers: 2 in CI (up from 1 — GitHub runners handle 2 workers stably for this suite size)
-- Manual trigger: `grep` input for tag filtering + `environment` input for target env
+- Manual trigger: `grep` input for tag filtering + `environment` input for target env + `project` input for browser selection (chromium/firefox/mobile-chrome/mobile-safari)
 - Artifacts: Playwright report, Allure report (always), traces/screenshots/videos (on failure)
 - Allure `executor.json` and `environment.properties` generated per run — populates EXECUTORS (CI run link, build number, browser) and ENVIRONMENT (Base URL, branch, commit, target env) sections in Allure report
+- After tests: calls `pages.yml` reusable workflow to publish report to `/{browser}/runs/{run-number}/`
 
 ### Nightly Regression (`nightly.yml`)
 
 - Schedule: 2:00 AM UTC daily
-- Matrix: chromium, firefox, mobile-chrome, mobile-safari (4 parallel jobs)
+- Matrix: chromium, firefox, mobile-chrome, mobile-safari (4 parallel jobs, always all browsers)
 - Gates: `type:check` → `lint` → Playwright tests (same as PR pipeline)
-- Manual trigger: `grep` input + `environment` input + `project` input (single browser)
+- Manual trigger: `grep` input + `environment` input (no browser selection — use e2e.yml for targeted single-browser runs)
 - Per-browser artifacts: Playwright report, Allure report, traces on failure
 - Allure `executor.json` and `environment.properties` generated per run — same as PR pipeline but with browser name from matrix
+- After tests: each matrix job calls `pages.yml` with its own browser — 4 separate report URLs per nightly run
+- Publish jobs run sequentially via `max-parallel: 1` — prevents git push conflicts on gh-pages
 
 ### Allure Report — GitHub Pages (`pages.yml`)
 
-- Triggers: after every completed `E2E Tests` run on `tests/e2e-suite`, `dev`, `main`
-- Restores allure-history from `gh-pages` for trend graphs
-- Publishes live report to `https://chamleck.github.io/realworld-playwright-demo`
-- Summary link added to every pipeline run
+- Reusable workflow (`workflow_call`) — called by `e2e.yml` and each `nightly.yml` matrix job
+- Each run published to its own URL: `/{browser}/runs/{run-number}/`
+- History preserved per browser/device: `/{browser}/allure-history.jsonl` on gh-pages
+- `keep_files: true` — publishing one browser never overwrites another browser's reports
+- `max-parallel: 1` in nightly publish matrix — serializes gh-pages pushes to prevent conflicts
+- Retention policy — keeps last 20 runs per browser, deletes older ones automatically
+- `index.html` auto-generated with navigation across all browsers and runs
+- Summary link in each pipeline job points to the specific run's report URL
 
 ### Multi-environment strategy
 
@@ -324,14 +335,41 @@ Done. README and CLAUDE.md updated with:
 - "Allure 3 upgrade" added to Future improvements as known future enhancement
 - WebKit installation time documented in Known quirks (see below)
 
-## M5 — Optional Enhancements (not planned for now)
+## M5 — Optional Enhancements
 
 - **Parallel sharding** — split tests across multiple GitHub Actions runners via matrix `--shard=N/M`. Worthwhile at ~100+ tests; for the current 22-test suite the runner startup overhead exceeds the benefit.
-- **Allure 3 upgrade** — `allure-playwright@3.x` already installed; CLI upgrade from `allure-commandline@2.x` to the new `allure` package brings redesigned UI and plugin system. Deferred — current setup works correctly.
 - Project Dependencies as alternative to globalSetup — mention in README as an architectural alternative
 - Flake stabilization analysis — after 10+ CI runs
 - API tests layer alongside E2E
 - Mobile viewport tests
+
+### M5.1 — Allure 3 upgrade ✅
+
+Done. Replaced `allure-commandline@2.x` with `allure@3.x` (new TypeScript-based CLI).
+
+- New Awesome UI with improved visualization and navigation
+- `allurerc.json` added to project root — configures output, historyPath, plugins
+- `historyPath: ./allure-history.jsonl` — Allure 3 uses single JSONL file instead of Allure 2's `history/` folder
+- `appendHistory: true` — history accumulates between runs
+- `pages.yml` updated — restores/saves `allure-history.jsonl` instead of `history/` folder
+- npm scripts updated — new `allure generate` syntax (no `--clean` flag, different arg order)
+- `test:with-report` clears `allure-results/` before run to prevent result accumulation
+
+### M5.2 — Per-run Allure reports on GitHub Pages ✅
+
+Done. Each CI run now has its own Allure report URL on GitHub Pages.
+
+- `pages.yml` rewritten as reusable workflow (`workflow_call`) — called directly from `e2e.yml` and each `nightly.yml` matrix job
+- Per-browser/device report URLs: `/{browser}/runs/{run-number}/`
+- History grouped per browser/device — `ALLURE_BROWSER` env var set to `matrix.project`
+- `allurerc.json` → `allurerc.mjs` — dynamic JS config reads `ALLURE_BROWSER` to set `historyPath`
+- `allure-history/` folder replaces single `allure-history.jsonl` — one JSONL file per browser/device
+- Retention policy: last 20 runs per browser kept, older runs auto-deleted
+- `index.html` auto-generated — navigation page listing all browsers and their runs
+- `concurrency: gh-pages-publish, cancel-in-progress: false` — serializes parallel nightly publish jobs to prevent git conflicts
+- `cross-env` added — enables `ALLURE_BROWSER` in npm scripts on Windows/CMD
+- New npm scripts: `test:with-report:chromium/firefox/mobile-chrome/mobile-safari`
+- `executor.json` `reportUrl` updated to point to specific run URL
 
 ---
 

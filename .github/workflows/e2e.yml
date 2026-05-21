@@ -3,7 +3,8 @@
 # =============================================================================
 #
 # Fast feedback on every push and pull request.
-# Runs only Chromium (desktop) to keep the pipeline under 5 minutes.
+# Defaults to Chromium to keep the pipeline under 5 minutes.
+# A specific browser can be selected via workflow_dispatch for targeted debugging.
 # Full cross-browser regression runs nightly — see nightly.yml.
 #
 # Multi-environment support via prefixed secrets:
@@ -37,6 +38,16 @@ on:
           - dev
           - staging
           - production
+      project:
+        description: 'Browser project (default: chromium)'
+        required: false
+        default: 'chromium'
+        type: choice
+        options:
+          - chromium
+          - firefox
+          - mobile-chrome
+          - mobile-safari
 
 # Cancel previous runs for the same branch/PR — saves runner minutes
 concurrency:
@@ -45,7 +56,7 @@ concurrency:
 
 jobs:
   e2e:
-    name: E2E Chromium
+    name: E2E ${{ github.event.inputs.project || 'chromium' }}
     runs-on: ubuntu-latest
     timeout-minutes: 15
 
@@ -101,17 +112,32 @@ jobs:
       - name: Lint
         run: npm run lint:tests
 
-      - name: Install Playwright Chromium
-        run: npx playwright install --with-deps chromium
+      # Install only the browser needed for this run.
+      # mobile-chrome uses Chromium engine, mobile-safari uses WebKit.
+      - name: Install Playwright browser
+        run: |
+          PROJECT="${{ github.event.inputs.project || 'chromium' }}"
+          if [ "$PROJECT" = "mobile-chrome" ]; then
+            npx playwright install --with-deps chromium
+          elif [ "$PROJECT" = "mobile-safari" ]; then
+            npx playwright install --with-deps webkit
+          else
+            npx playwright install --with-deps $PROJECT
+          fi
 
-      - name: Run E2E tests (Chromium only)
-        run: npx playwright test --project=chromium ${{ github.event.inputs.grep && format('--grep "{0}"', github.event.inputs.grep) || '' }}
+      - name: Run E2E tests
+        run: |
+          npx playwright test \
+          --project=${{ github.event.inputs.project || 'chromium' }} \
+          ${{ github.event.inputs.grep && format('--grep "{0}"', github.event.inputs.grep) || '' }}
 
       # Create Allure executor info — populates EXECUTORS section in report.
       # Shows which CI run produced this report with a direct link to the run.
+      # reportUrl points to the specific run's report on GitHub Pages.
       - name: Create Allure executor info
         if: always()
         run: |
+          PROJECT="${{ github.event.inputs.project || 'chromium' }}"
           mkdir -p allure-results
           cat > allure-results/executor.json << EOF
           {
@@ -119,9 +145,9 @@ jobs:
             "type": "github",
             "url": "https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}",
             "buildOrder": ${{ github.run_number }},
-            "buildName": "Run #${{ github.run_number }} — chromium",
+            "buildName": "Run #${{ github.run_number }} — ${PROJECT}",
             "buildUrl": "https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}",
-            "reportUrl": "https://chamleck.github.io/realworld-playwright-demo",
+            "reportUrl": "https://chamleck.github.io/realworld-playwright-demo/${PROJECT}/runs/${{ github.run_number }}/",
             "reportName": "Allure Report"
           }
           EOF
@@ -131,9 +157,10 @@ jobs:
       - name: Create Allure environment properties
         if: always()
         run: |
+          PROJECT="${{ github.event.inputs.project || 'chromium' }}"
           mkdir -p allure-results
           cat > allure-results/environment.properties << EOF
-          Browser=chromium
+          Browser=${PROJECT}
           Base URL=${{ env.BASE_URL }}
           Target environment=${{ github.event.inputs.environment || 'dev' }}
           Branch=${{ github.ref_name }}
@@ -141,14 +168,12 @@ jobs:
           Run number=${{ github.run_number }}
           EOF
 
-      # Copy categories.json into allure-results before generating report
-      # so Allure classifies known bugs correctly in the report.
-      - name: Copy Allure categories config
-        if: always()
-        run: cp tests/allure-config/categories.json allure-results/categories.json
-
+      # Generate Allure report — ALLURE_BROWSER tells allurerc.mjs which
+      # history file to use: allure-history/{browser}.jsonl
       - name: Generate Allure report
         if: always()
+        env:
+          ALLURE_BROWSER: ${{ github.event.inputs.project || 'chromium' }}
         run: npm run allure:generate
 
       - name: Upload Allure results
@@ -175,8 +200,19 @@ jobs:
           path: test-results/
           retention-days: 7
 
-      - name: Publish report summary
-        if: always()
-        run: |
-         echo "## 📊 Allure Report" >> $GITHUB_STEP_SUMMARY
-         echo "[Open live report](https://chamleck.github.io/realworld-playwright-demo)" >> $GITHUB_STEP_SUMMARY
+  # Publish Allure report to GitHub Pages after tests complete.
+  # Report is published to: /{browser}/runs/{run-number}/
+  # History is preserved per browser for trend analysis.
+  # Summary link points to the specific run's report.
+  publish:
+    name: Publish Allure Report
+    needs: e2e
+    if: always()
+    uses: ./.github/workflows/pages.yml
+    with:
+      browser: ${{ github.event.inputs.project || 'chromium' }}
+      run-number: ${{ github.run_number }}
+      artifact-name: allure-results
+    permissions:
+      contents: write
+      pages: write

@@ -84,9 +84,11 @@ export class ArticlePage extends BasePage {
   /* Click Delete Article — shows confirmation dialog */
   async clickDelete() {
     await test.step('Click Delete Article', async () => {
-      this.page.once('dialog', dialog => dialog.accept());
-      await this.deleteButton.first().click();
-      await this.page.waitForLoadState('networkidle');
-    });
-  }
+     this.page.once('dialog', dialog => dialog.accept());
+     await Promise.all([
+       this.page.waitForURL('**/'),
+       this.deleteButton.first().click(),
+    ]);
+  });
+}
 }
