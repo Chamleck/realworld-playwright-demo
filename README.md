@@ -132,10 +132,10 @@ Key decision: this project tests a Next.js app with JWT auth in `localStorage`. 
 
 ### CI/CD
 
-- **PR pipeline** (`e2e.yml`): Chromium only, runs on every push/PR. Target < 5 minutes.
-- **Nightly regression** (`nightly.yml`): All 4 browsers, runs at 2:00 AM UTC daily.
+- **PR pipeline** (`e2e.yml`): Chromium by default, runs on every push/PR. Target < 5 minutes. On manual trigger, any browser can be selected via `project` input.
+- **Nightly regression** (`nightly.yml`): Always all 4 browsers, runs at 2:00 AM UTC daily. For targeted single-browser runs use `e2e.yml`.
 - Both pipelines run `type:check` → `lint` gates before tests — CI fails fast on type errors or lint violations without spending time launching browsers.
-- Both support manual trigger via `workflow_dispatch` with `grep` (tag filter), `environment` (dev/staging/production), and browser selection (nightly only).
+- Both support manual trigger via `workflow_dispatch` with `grep` (tag filter) and `environment` (dev/staging/production). Browser selection available in `e2e.yml` (default: chromium) — `nightly.yml` always runs all 4 browsers.
 - Workers: 2 in CI — GitHub runners handle 2 parallel workers stably for this suite size.
 - Artifacts: Playwright HTML report + Allure report (always), traces/screenshots/videos (on failure only).
 - **Docker considered and deprioritized**: GitHub Actions `ubuntu-latest` runners provide a clean, reproducible environment per run. Docker would add complexity and image pull time without meaningful benefit at this scale.

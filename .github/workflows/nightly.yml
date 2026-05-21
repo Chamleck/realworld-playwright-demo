@@ -4,6 +4,7 @@
 #
 # Full cross-browser regression: Chromium, Firefox, Mobile Chrome, Mobile Safari.
 # Runs on schedule (every night at 2:00 AM UTC) and on manual trigger.
+# Always runs all 4 browsers — for targeted single-browser runs use e2e.yml.
 #
 # This catches browser-specific bugs that the fast PR pipeline (Chromium-only)
 # would miss: WebKit rendering differences, Firefox event handling quirks,
@@ -33,17 +34,6 @@ on:
           - dev
           - staging
           - production
-      project:
-        description: 'Browser project (leave empty for all)'
-        required: false
-        default: ''
-        type: choice
-        options:
-          - ''
-          - chromium
-          - firefox
-          - mobile-chrome
-          - mobile-safari
 
 jobs:
   nightly:
@@ -108,13 +98,15 @@ jobs:
       - name: Lint
         run: npm run lint:tests
 
+      # Install only the browser needed for this matrix job.
+      # mobile-chrome uses Chromium engine, mobile-safari uses WebKit.
       - name: Install Playwright browser
         run: npx playwright install --with-deps ${{ matrix.project == 'mobile-chrome' && 'chromium' || matrix.project == 'mobile-safari' && 'webkit' || matrix.project }}
 
       - name: Run E2E tests
         run: |
           npx playwright test \
-          --project=${{ github.event.inputs.project || matrix.project }} \
+          --project=${{ matrix.project }} \
           --workers=${{ (matrix.project == 'firefox' || matrix.project == 'mobile-safari') && '1' || '2' }} \
           ${{ github.event.inputs.grep && format('--grep "{0}"', github.event.inputs.grep) || '' }}
 

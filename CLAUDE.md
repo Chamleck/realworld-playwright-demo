@@ -52,7 +52,7 @@ main                          ← application under test only (no tests)
 ## Project structure
 realworld-playwright-demo/
 ├── .github/workflows/
-│   ├── e2e.yml                    # PR pipeline — Chromium only, fast feedback
+│   ├── e2e.yml                    # PR pipeline — Chromium by default, browser selectable on manual trigger
 │   ├── nightly.yml                # Full regression — all 4 browsers, nightly schedule
 │   └── pages.yml                  # Allure report publisher — reusable workflow, per-run per-browser
 ├── prisma/
@@ -195,23 +195,24 @@ New variables must be added to: `.env.example` + `tests/helpers/env.ts` + GitHub
 ### PR Pipeline (`e2e.yml`)
 
 - Triggers: push/PR to `setup/playwright`, `tests/e2e-suite`, `dev`, `main`
-- Browser: Chromium only (fast feedback, target < 5 min)
+- Browser: Chromium by default — any browser can be selected via `project` input on manual trigger
 - Gates: `type:check` → `lint` → Playwright tests (in order)
 - Workers: 2 in CI (up from 1 — GitHub runners handle 2 workers stably for this suite size)
-- Manual trigger: `grep` input for tag filtering + `environment` input for target env
+- Manual trigger: `grep` input for tag filtering + `environment` input for target env + `project` input for browser selection (chromium/firefox/mobile-chrome/mobile-safari)
 - Artifacts: Playwright report, Allure report (always), traces/screenshots/videos (on failure)
 - Allure `executor.json` and `environment.properties` generated per run — populates EXECUTORS (CI run link, build number, browser) and ENVIRONMENT (Base URL, branch, commit, target env) sections in Allure report
-- After tests: calls `pages.yml` reusable workflow to publish report to `https://chamleck.github.io/realworld-playwright-demo/chromium/runs/{run-number}/`
+- After tests: calls `pages.yml` reusable workflow to publish report to `/{browser}/runs/{run-number}/`
 
 ### Nightly Regression (`nightly.yml`)
 
 - Schedule: 2:00 AM UTC daily
-- Matrix: chromium, firefox, mobile-chrome, mobile-safari (4 parallel jobs)
+- Matrix: chromium, firefox, mobile-chrome, mobile-safari (4 parallel jobs, always all browsers)
 - Gates: `type:check` → `lint` → Playwright tests (same as PR pipeline)
-- Manual trigger: `grep` input + `environment` input + `project` input (single browser)
+- Manual trigger: `grep` input + `environment` input (no browser selection — use e2e.yml for targeted single-browser runs)
 - Per-browser artifacts: Playwright report, Allure report, traces on failure
 - Allure `executor.json` and `environment.properties` generated per run — same as PR pipeline but with browser name from matrix
 - After tests: each matrix job calls `pages.yml` with its own browser — 4 separate report URLs per nightly run
+- Publish jobs run sequentially via `max-parallel: 1` — prevents git push conflicts on gh-pages
 
 ### Allure Report — GitHub Pages (`pages.yml`)
 
@@ -219,7 +220,7 @@ New variables must be added to: `.env.example` + `tests/helpers/env.ts` + GitHub
 - Each run published to its own URL: `/{browser}/runs/{run-number}/`
 - History preserved per browser/device: `/{browser}/allure-history.jsonl` on gh-pages
 - `keep_files: true` — publishing one browser never overwrites another browser's reports
-- `concurrency: gh-pages-publish, cancel-in-progress: false` — serializes parallel nightly jobs to prevent git push conflicts
+- `max-parallel: 1` in nightly publish matrix — serializes gh-pages pushes to prevent conflicts
 - Retention policy — keeps last 20 runs per browser, deletes older ones automatically
 - `index.html` auto-generated with navigation across all browsers and runs
 - Summary link in each pipeline job points to the specific run's report URL
