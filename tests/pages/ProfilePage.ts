@@ -93,9 +93,11 @@ export class ProfilePage extends BasePage {
   }
 
   async logout() {
-    await test.step('Logout', async () => {
-      await this.logoutButton.click();
-      await this.page.waitForLoadState('networkidle');
-    });
-  }
+  await test.step('Logout', async () => {
+    await Promise.all([
+      this.page.waitForURL('**/'),
+      this.logoutButton.click(),
+    ]);
+  });
+ }
 }

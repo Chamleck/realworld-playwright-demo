@@ -90,5 +90,5 @@ export class ArticlePage extends BasePage {
        this.deleteButton.first().click(),
     ]);
   });
-}
+ }
 }
