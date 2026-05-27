@@ -219,9 +219,10 @@ New variables must be added to: `.env.example` + `tests/helpers/env.ts` + GitHub
 - Reusable workflow (`workflow_call`) — called by `e2e.yml` and each `nightly.yml` matrix job
 - Each run published to its own URL: `/{browser}/runs/{run-number}/`
 - History preserved per browser/device: `/{browser}/allure-history.jsonl` on gh-pages
-- `keep_files: true` — publishing one browser never overwrites another browser's reports
-- `max-parallel: 1` in nightly publish matrix — serializes gh-pages pushes to prevent conflicts
-- Retention policy — keeps last 20 runs per browser, deletes older ones automatically
+- Deploy uses custom git commands instead of `peaceiris/actions-gh-pages` — required for correct retention: `peaceiris` with `keep_files: true` preserved deleted runs on gh-pages because it never actually removes files; `git rm` correctly removes them from git history
+- Retention policy — keeps last 20 runs per browser, older runs deleted via `git rm`
+- Push conflict handling — retry with `git pull --rebase` (up to 3 attempts) for concurrent e2e + nightly runs
+- `max-parallel: 1` in nightly publish matrix — primary conflict prevention for nightly's 4 parallel browsers
 - `index.html` auto-generated with navigation across all browsers and runs
 - Summary link in each pipeline job points to the specific run's report URL
 
@@ -422,7 +423,7 @@ stale-locator issues when the DOM updates between page transitions.
 
 Firefox and WebKit occasionally abort navigation (`NS_BINDING_ABORTED` / "interrupted by another navigation") when a new `goto()` is called while the browser is still processing a redirect from a previous action (logout, article deletion). This is a WebKit/Gecko timing issue — Chromium handles it gracefully, these engines don't.
 
-**Fix**: add `waitForLoadState('networkidle')` inside the Page Object method that triggers the redirect (`logout()`, `clickDelete()`). This ensures the redirect completes before the next navigation starts. Applied in `ProfilePage.logout()` and `ArticlePage.clickDelete()`.
+**Fix**: replace sequential `click()` + `waitForLoadState()` with `Promise.all([waitForURL('**/'), click()])` in the Page Object methods that trigger redirects (`logout()`, `clickDelete()`). `Promise.all` registers the navigation listener before the click fires — eliminating the race condition where the redirect completes before the listener is set up. `waitForURL('**/')` is the officially recommended Playwright pattern; deprecated `waitForNavigation` was considered and rejected. Applied in `ProfilePage.logout()` and `ArticlePage.clickDelete()`.
 
 Nightly jobs for Firefox and mobile-safari also run with `--workers=1` to reduce parallel load on CI runners.
 

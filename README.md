@@ -139,7 +139,7 @@ Key decision: this project tests a Next.js app with JWT auth in `localStorage`. 
 - Workers: 2 in CI — GitHub runners handle 2 parallel workers stably for this suite size.
 - Artifacts: Playwright HTML report + Allure report (always), traces/screenshots/videos (on failure only).
 - **Docker considered and deprioritized**: GitHub Actions `ubuntu-latest` runners provide a clean, reproducible environment per run. Docker would add complexity and image pull time without meaningful benefit at this scale.
-- **Allure report** (`pages.yml`): reusable workflow publishing each run to its own URL — `/{browser}/runs/{run-number}/`. History tracked per browser/device. Retention keeps last 20 runs. Navigation index at [GitHub Pages](https://chamleck.github.io/realworld-playwright-demo).
+- **Allure report** (`pages.yml`): reusable workflow publishing each run to its own URL — `/{browser}/runs/{run-number}/`. Deploy uses custom git commands with `git rm` for correct retention (last 20 runs per browser) and retry logic for push conflicts. Navigation index at [GitHub Pages](https://chamleck.github.io/realworld-playwright-demo).
 - Each pipeline job's Summary shows a direct link to that specific run's Allure report.
 - **Allure 3** (`allure@3.x`) — new Awesome UI with improved visualization, JSONL-based history tracking.
 

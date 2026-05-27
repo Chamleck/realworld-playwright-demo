@@ -46,7 +46,7 @@ jobs:
   publish:
     name: Publish — ${{ inputs.browser }}
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 15
 
     permissions:
       contents: write
@@ -91,38 +91,10 @@ jobs:
           ALLURE_BROWSER: ${{ inputs.browser }}
         run: npm run allure:generate
 
-      # Prepare report for deployment:
-      # 1. Copy updated history back so it gets published to gh-pages
-      # 2. Stage report in browser/runs/{run-number}/ folder structure
-      - name: Prepare report for deployment
-        run: |
-          mkdir -p deploy/${{ inputs.browser }}/runs/${{ inputs.run-number }}
-          cp -r allure-report/. deploy/${{ inputs.browser }}/runs/${{ inputs.run-number }}/
-          mkdir -p deploy/${{ inputs.browser }}
-          cp allure-history/${{ inputs.browser }}.jsonl deploy/${{ inputs.browser }}/allure-history.jsonl 2>/dev/null || true
-
-      # Apply retention policy — keep only the latest N runs per browser.
-      # Fetches existing runs from gh-pages and removes oldest ones.
-      - name: Apply retention policy
-        continue-on-error: true
-        run: |
-          git fetch origin gh-pages --depth=1
-          RUNS=$(git ls-tree --name-only origin/gh-pages ${{ inputs.browser }}/runs/ 2>/dev/null | xargs -I{} basename {} | grep -E '^[0-9]+$' | sort -n)
-          TOTAL=$(echo "$RUNS" | grep -c '[0-9]' || true)
-          RETENTION=${{ inputs.retention }}
-          if [ "$TOTAL" -gt "$RETENTION" ]; then
-            TO_DELETE=$(echo "$RUNS" | head -n $(($TOTAL - $RETENTION)))
-            for RUN in $TO_DELETE; do
-              echo "Removing old run: ${{ inputs.browser }}/runs/$RUN"
-              rm -rf deploy/${{ inputs.browser }}/runs/$RUN
-            done
-          fi
-
       # Generate index.html — navigation page listing all browsers and their runs.
-      # Fetches existing runs from gh-pages and merges with current deployment.
       - name: Generate index.html
         run: |
-          cat > deploy/index.html << 'EOF'
+          cat > index.html << 'EOF'
           <!DOCTYPE html>
           <html lang="en">
           <head>
@@ -137,7 +109,6 @@ jobs:
               .run { background: #f8f9fa; border: 1px solid #e8e8e8; border-radius: 6px; padding: 12px; text-decoration: none; color: #333; transition: all 0.2s; }
               .run:hover { background: #e8f4fd; border-color: #4a90d9; }
               .run-number { font-weight: bold; font-size: 1.1em; }
-              .badge { display: inline-block; background: #4a90d9; color: white; border-radius: 12px; padding: 2px 8px; font-size: 0.75em; margin-left: 6px; }
             </style>
           </head>
           <body>
@@ -172,26 +143,77 @@ jobs:
           </html>
           EOF
 
-      # Generate runs index.json for this browser — used by index.html
-      - name: Generate runs index
-        run: |
-          git fetch origin gh-pages --depth=1
-          EXISTING=$(git ls-tree --name-only origin/gh-pages ${{ inputs.browser }}/runs/ 2>/dev/null | grep -E '^[0-9]+$' | sort -n || true)
-          ALL_RUNS=$(echo -e "$EXISTING\n${{ inputs.run-number }}" | sort -nu | tr '\n' ',' | sed 's/,$//')
-          mkdir -p deploy/${{ inputs.browser }}/runs
-          echo "[$ALL_RUNS]" | sed 's/,/, /g' > deploy/${{ inputs.browser }}/runs/index.json
-
-      # Deploy to gh-pages — keep_files: true preserves other browsers' reports
+      # Deploy to gh-pages using git directly:
+      # 1. Clone gh-pages into a temp directory
+      # 2. Add new report
+      # 3. Apply retention — git rm old runs
+      # 4. Update history, index.html, runs index
+      # 5. Push with retry on conflict
       - name: Deploy to GitHub Pages
-        uses: peaceiris/actions-gh-pages@v3
-        with:
-          github_token: ${{ secrets.GITHUB_TOKEN }}
-          publish_dir: deploy
-          publish_branch: gh-pages
-          keep_files: true
-          user_name: 'github-actions[bot]'
-          user_email: 'github-actions[bot]@users.noreply.github.com'
-          commit_message: 'ci: publish ${{ inputs.browser }} report — run #${{ inputs.run-number }}'
+        run: |
+          # Clone gh-pages branch
+          git clone --depth=1 --branch gh-pages \
+            https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/${{ github.repository }}.git \
+            gh-pages-dir 2>/dev/null || {
+            # gh-pages doesn't exist yet — create empty dir
+            mkdir gh-pages-dir
+            cd gh-pages-dir
+            git init
+            git remote add origin https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/${{ github.repository }}.git
+            git checkout --orphan gh-pages
+            cd ..
+          }
+
+          cd gh-pages-dir
+
+          git config user.name 'github-actions[bot]'
+          git config user.email 'github-actions[bot]@users.noreply.github.com'
+
+          # Add new report
+          mkdir -p ${{ inputs.browser }}/runs/${{ inputs.run-number }}
+          cp -r ../allure-report/. ${{ inputs.browser }}/runs/${{ inputs.run-number }}/
+
+          # Update per-browser history
+          mkdir -p ${{ inputs.browser }}
+          cp ../allure-history/${{ inputs.browser }}.jsonl ${{ inputs.browser }}/allure-history.jsonl 2>/dev/null || true
+
+          # Apply retention policy — git rm oldest runs
+          RUNS=$(ls ${{ inputs.browser }}/runs/ 2>/dev/null | grep -E '^[0-9]+$' | sort -n || true)
+          TOTAL=$(echo "$RUNS" | grep -c '[0-9]' 2>/dev/null || echo 0)
+          RETENTION=${{ inputs.retention }}
+          if [ "$TOTAL" -gt "$RETENTION" ]; then
+            TO_DELETE=$(echo "$RUNS" | head -n $(($TOTAL - $RETENTION)))
+            for RUN in $TO_DELETE; do
+              echo "Removing old run: ${{ inputs.browser }}/runs/$RUN"
+              git rm -rf ${{ inputs.browser }}/runs/$RUN 2>/dev/null || rm -rf ${{ inputs.browser }}/runs/$RUN
+            done
+          fi
+
+          # Update runs index.json
+          mkdir -p ${{ inputs.browser }}/runs
+          CURRENT_RUNS=$(ls ${{ inputs.browser }}/runs/ 2>/dev/null | grep -E '^[0-9]+$' | sort -n | tr '\n' ',' | sed 's/,$//')
+          echo "[$CURRENT_RUNS]" | sed 's/,/, /g' > ${{ inputs.browser }}/runs/index.json
+
+          # Update index.html
+          cp ../index.html index.html
+
+          # Commit and push with retry on conflict
+          git add -A
+          git diff --cached --quiet && echo "Nothing to commit" && exit 0
+          git commit -m "ci: publish ${{ inputs.browser }} report — run #${{ inputs.run-number }}"
+
+          MAX_RETRIES=3
+          RETRY=0
+          until git push origin gh-pages; do
+            RETRY=$((RETRY+1))
+            if [ $RETRY -ge $MAX_RETRIES ]; then
+              echo "Push failed after $MAX_RETRIES retries"
+              exit 1
+            fi
+            echo "Push failed, retry $RETRY/$MAX_RETRIES..."
+            git pull --rebase origin gh-pages
+            sleep $((RETRY * 2))
+          done
 
       # Update Summary with direct link to this run's report
       - name: Publish report summary
