@@ -107,7 +107,7 @@ jobs:
         continue-on-error: true
         run: |
           git fetch origin gh-pages --depth=1
-          RUNS=$(git ls-tree --name-only origin/gh-pages ${{ inputs.browser }}/runs/ 2>/dev/null | sort -n)
+          RUNS=$(git ls-tree --name-only origin/gh-pages ${{ inputs.browser }}/runs/ 2>/dev/null | xargs -I{} basename {} | grep -E '^[0-9]+$' | sort -n)
           TOTAL=$(echo "$RUNS" | grep -c '[0-9]' || true)
           RETENTION=${{ inputs.retention }}
           if [ "$TOTAL" -gt "$RETENTION" ]; then
