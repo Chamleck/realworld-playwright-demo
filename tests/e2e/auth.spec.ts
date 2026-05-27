@@ -35,10 +35,13 @@ test.describe('Registration @auth', () => {
   });
 
   test('should register a new user with valid data', async ({ page }) => {
+
+    const signUpPage = new SignUpPage(page);
+    const homePage = new HomePage(page);
+
     const user = usersData.validUsers[0]!;
     createdEmails.push(user.email);
 
-    const signUpPage = new SignUpPage(page);
     await signUpPage.goto();
 
     const responsePromise = page.waitForResponse(
@@ -48,16 +51,19 @@ test.describe('Registration @auth', () => {
     await signUpPage.register(user.username, user.email, user.password);
     await responsePromise;
 
-    const homePage = new HomePage(page);
     await homePage.waitForURL('/');
     await expect(homePage.getNavProfile(user.username)).toBeVisible();
   });
 
   test('should register and then logout successfully', async ({ page }) => {
+
+    const signUpPage = new SignUpPage(page);
+    const homePage = new HomePage(page);
+    const profilePage = new ProfilePage(page);
+
     const user = usersData.validUsers[1]!;
     createdEmails.push(user.email);
 
-    const signUpPage = new SignUpPage(page);
     await signUpPage.goto();
 
     const responsePromise = page.waitForResponse(
@@ -67,11 +73,11 @@ test.describe('Registration @auth', () => {
     await signUpPage.register(user.username, user.email, user.password);
     await responsePromise;
 
-    const homePage = new HomePage(page);
-    await homePage.waitForURL('/');
-    await expect(homePage.getNavProfile(user.username)).toBeVisible();
+   await homePage.waitForURL('/');
+   await page.waitForLoadState('networkidle');
+   await expect(homePage.getNavProfile(user.username)).toBeVisible();
 
-    const profilePage = new ProfilePage(page);
+
     await profilePage.gotoSettings();
     await profilePage.logout();
 
@@ -86,7 +92,9 @@ test.describe('Registration @auth', () => {
 test.describe('Registration validation @auth', () => {
   for (const invalidUser of usersData.invalidUsers) {
     test(`should reject: ${invalidUser.description}`, async ({ page }) => {
+
       const signUpPage = new SignUpPage(page);
+
       await signUpPage.goto();
 
       const responsePromise = page.waitForResponse(
@@ -118,7 +126,10 @@ test.describe('Login @auth', () => {
    */
 
   test('should login with valid credentials @smoke', async ({ page }) => {
+
     const loginPage = new LoginPage(page);
+    const homePage = new HomePage(page);
+
     await loginPage.goto();
 
     const responsePromise = page.waitForResponse(
@@ -128,13 +139,16 @@ test.describe('Login @auth', () => {
     await loginPage.login(GLOBAL_TEST_USER.email, GLOBAL_TEST_USER.password);
     await responsePromise;
 
-    const homePage = new HomePage(page);
     await homePage.waitForURL('/');
     await expect(homePage.getNavProfile(GLOBAL_TEST_USER.username)).toBeVisible();
   });
 
   test('should login and logout successfully', async ({ page }) => {
+
     const loginPage = new LoginPage(page);
+    const homePage = new HomePage(page);
+    const profilePage = new ProfilePage(page);
+
     await loginPage.goto();
 
     const responsePromise = page.waitForResponse(
@@ -144,11 +158,9 @@ test.describe('Login @auth', () => {
     await loginPage.login(GLOBAL_TEST_USER.email, GLOBAL_TEST_USER.password);
     await responsePromise;
 
-    const homePage = new HomePage(page);
     await homePage.waitForURL('/');
     await expect(homePage.getNavProfile(GLOBAL_TEST_USER.username)).toBeVisible();
 
-    const profilePage = new ProfilePage(page);
     await profilePage.gotoSettings();
     await profilePage.logout();
 
@@ -156,9 +168,11 @@ test.describe('Login @auth', () => {
   });
 
   test('should reject login with invalid credentials', async ({ page }) => {
+    
     const invalidUser = usersData.invalidUsers[2]!;
 
     const loginPage = new LoginPage(page);
+
     await loginPage.goto();
 
     const responsePromise = page.waitForResponse(
@@ -179,7 +193,9 @@ test.describe('Login @auth', () => {
 
 test.describe('Auth navigation @auth', () => {
   test('should navigate from register to login', async ({ page }) => {
+
     const signUpPage = new SignUpPage(page);
+
     await signUpPage.goto();
 
     await expect(signUpPage.loginLink).toBeVisible();
@@ -188,7 +204,9 @@ test.describe('Auth navigation @auth', () => {
   });
 
   test('should navigate from login to register', async ({ page }) => {
+
     const loginPage = new LoginPage(page);
+    
     await loginPage.goto();
 
     await expect(loginPage.registerLink).toBeVisible();

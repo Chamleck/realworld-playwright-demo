@@ -40,6 +40,7 @@ async function createArticleViaUI(
   authedPage: Page,
   createdSlugs: string[]
 ): Promise<{ slug: string; articlePage: ArticlePage }> {
+  
   const article = articlesData.validArticle;
 
   const homePage = new HomePage(authedPage);
@@ -75,6 +76,7 @@ async function createArticleViaUI(
 /* ================================================================== */
 
 test.describe('Article CRUD @articles', () => {
+
   const createdSlugs: string[] = [];
 
   test.afterEach(async () => {
@@ -85,6 +87,7 @@ test.describe('Article CRUD @articles', () => {
   });
 
   test('should create an article and verify its content @smoke', async ({ authedPage }) => {
+
     const article = articlesData.validArticle;
 
     /* This is the only test that creates via UI — we're testing the UI creation flow */
@@ -101,7 +104,9 @@ test.describe('Article CRUD @articles', () => {
 
   test.describe('Global feed @articles', () => {
   test('should show created article in global feed @smoke', async ({ authedPage, seededArticle }) => {
+
     const homePage = new HomePage(authedPage);
+
     await homePage.goto();
 
     const articlePreview = await homePage.findArticleAcrossPages(seededArticle.title);
@@ -113,6 +118,7 @@ test.describe('Article CRUD @articles', () => {
   });
 
   test('should create and then edit an article', async ({ authedPage, seededArticle }) => {
+
     const updated = articlesData.updatedArticle;
 
     const homePage = new HomePage(authedPage);
@@ -139,6 +145,7 @@ test.describe('Article CRUD @articles', () => {
   });
 
   test('should delete an article', async ({ authedPage, seededArticle }) => {
+
     const homePage = new HomePage(authedPage);
     const articlePage = new ArticlePage(authedPage);
 
@@ -209,6 +216,7 @@ test.describe('Article CRUD @articles', () => {
 
 test.describe('Article comments @articles', () => {
   test('should add a comment to an article', async ({ authedPage, seededArticle }) => {
+
     const comment = articlesData.comment;
     const articlePage = new ArticlePage(authedPage);
 
@@ -225,6 +233,7 @@ test.describe('Article comments @articles', () => {
   });
 
   test('should delete a comment from an article', async ({ authedPage, seededArticle }) => {
+
     const comment = articlesData.comment;
     const articlePage = new ArticlePage(authedPage);
 
@@ -256,6 +265,7 @@ test.describe('Article comments @articles', () => {
 
 test.describe('Article favorites @articles', () => {
   test('should add and remove a favorite', async ({ authedPage, seededArticle }) => {
+
     const homePage = new HomePage(authedPage);
 
     /* Go to home and find the seeded article in feed */

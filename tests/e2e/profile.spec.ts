@@ -25,6 +25,7 @@ import usersData from '../fixtures/data/users.json';
 test.describe('Profile settings @profile', () => {
 
   test('should display validation errors when updating profile with invalid data', async ({ authedTestUserPage, testUser }) => {
+
     const invalidUser = usersData.invalidUsers[2]!; // invalid email + short password
     const profilePage = new ProfilePage(authedTestUserPage);
 
@@ -55,6 +56,7 @@ test.describe('Profile settings @profile', () => {
   });
 
   test('should successfully update profile with valid data', async ({ authedTestUserPage, profileUpdate }) => {
+
     const profilePage = new ProfilePage(authedTestUserPage);
     const homePage = new HomePage(authedTestUserPage);
 
@@ -90,6 +92,7 @@ test.describe('Profile settings @profile', () => {
   });
 
   test('should login with updated credentials and restore original profile data', async ({ authedTestUserPage, profileUpdate, testUser }) => {
+    
     const profilePage = new ProfilePage(authedTestUserPage);
     const homePage = new HomePage(authedTestUserPage);
     const loginPage = new LoginPage(authedTestUserPage);
