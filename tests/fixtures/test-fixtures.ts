@@ -104,20 +104,26 @@ export const test = base.extend<CustomFixtures>({
    * then creates a page in that context. The page starts "logged in"
    * because localStorage already has the JWT token.
    *
-   * Trace is started manually on the context so we can attach trace.zip
-   * directly into the Allure report on failure — no digging through
+   * Trace and video are started manually on the context so we can attach
+   * both directly into the Allure report on failure — no digging through
    * separate CI artifacts.
    *
+   * Video uses retain-on-failure pattern: recorded for every test but
+   * attached to the report only on failure. Playwright does not apply
+   * playwright.config.ts video settings to manually created contexts —
+   * recordVideo must be passed explicitly here.
+   *
    * Lifecycle:
-   *   1. Create context with storageState → page is authenticated
+   *   1. Create context with storageState + recordVideo → page is authenticated
    *   2. Start tracing on the context
    *   3. yield page to the test
-   *   4. On failure: stop tracing → attach trace.zip to Allure report
+   *   4. On failure: stop tracing → attach trace.zip + video to Allure report
    *   5. Close context
    */
   authedPage: async ({ browser }, use, testInfo) => {
     const context = await browser.newContext({
       storageState: STORAGE_STATE_PATH,
+      recordVideo: { dir: testInfo.outputDir },
     });
 
     /*
@@ -140,13 +146,20 @@ export const test = base.extend<CustomFixtures>({
       await use(page);
     } finally {
       /*
-       * Attach trace only when the test actually failed.
-       * Skipping on pass keeps allure-results lean — trace.zip can be
-       * several MB per test and is only useful for debugging failures.
+       * Attach trace and video only when the test actually failed.
+       * Skipping on pass keeps allure-results lean — these files can be
+       * several MB per test and are only useful for debugging failures.
+       *
+       * Order matters for video:
+       *   1. Save video object reference before closing context
+       *   2. Close context — this flushes the video file to disk
+       *   3. Resolve video path and attach — file is ready after close
        */
       if (testInfo.status !== testInfo.expectedStatus) {
         const tracePath = testInfo.outputPath('trace.zip');
         await context.tracing.stop({ path: tracePath });
+        const video = page.video();
+        await context.close();
         await testInfo.attach('trace', {
           path: tracePath,
           contentType: 'application/zip',
@@ -155,11 +168,19 @@ export const test = base.extend<CustomFixtures>({
           body: Buffer.from('https://trace.playwright.dev'),
           contentType: 'text/uri-list',
         });
+        if (video) {
+          const videoPath = await video.path();
+          if (videoPath) {
+            await testInfo.attach('video', {
+              path: videoPath,
+              contentType: 'video/webm',
+            });
+          }
+        }
       } else {
         await context.tracing.stop();
+        await context.close();
       }
-
-      await context.close();
     }
   },
 
@@ -256,15 +277,16 @@ export const test = base.extend<CustomFixtures>({
    * Used in profile tests where we need to modify user data without
    * affecting the global test session.
    *
-   * Trace is started manually on the context — same pattern as authedPage —
-   * so profile test failures also get trace.zip attached to the Allure report.
+   * Trace and video are started manually on the context — same pattern as
+   * authedPage — so profile test failures also get both attached to the
+   * Allure report.
    *
    * Lifecycle:
    *   1. Login as testUser via API to get JWT token
-   *   2. Create browser context with token in localStorage
+   *   2. Create browser context with token in localStorage + recordVideo
    *   3. Start tracing on the context
    *   4. yield page to the test
-   *   5. On failure: stop tracing → attach trace.zip to Allure report
+   *   5. On failure: stop tracing → attach trace.zip + video to Allure report
    *   6. Close context
    */
   authedTestUserPage: async ({ browser, testUser }, use, testInfo) => {
@@ -283,8 +305,15 @@ export const test = base.extend<CustomFixtures>({
           },
         ],
       },
+      recordVideo: { dir: testInfo.outputDir },
     });
 
+    /*
+     * Start tracing manually so we control when it stops.
+     * screenshots: true — captures a screenshot on every action.
+     * snapshots: true — captures DOM snapshot for each action (enables
+     *   "Pick locator" and element inspection in trace viewer).
+     */
     try {
       await context.tracing.start({ screenshots: true, snapshots: true });
     } catch {
@@ -298,9 +327,15 @@ export const test = base.extend<CustomFixtures>({
     try {
       await use(page);
     } finally {
+      /*
+       * Attach trace and video only when the test actually failed.
+       * Same retain-on-failure pattern and ordering as authedPage.
+       */
       if (testInfo.status !== testInfo.expectedStatus) {
         const tracePath = testInfo.outputPath('trace.zip');
         await context.tracing.stop({ path: tracePath });
+        const video = page.video();
+        await context.close();
         await testInfo.attach('trace', {
           path: tracePath,
           contentType: 'application/zip',
@@ -309,11 +344,19 @@ export const test = base.extend<CustomFixtures>({
           body: Buffer.from('https://trace.playwright.dev'),
           contentType: 'text/uri-list',
         });
+        if (video) {
+          const videoPath = await video.path();
+          if (videoPath) {
+            await testInfo.attach('video', {
+              path: videoPath,
+              contentType: 'video/webm',
+            });
+          }
+        }
       } else {
         await context.tracing.stop();
+        await context.close();
       }
-
-      await context.close();
     }
   },
 

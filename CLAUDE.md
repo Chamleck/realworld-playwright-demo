@@ -293,7 +293,7 @@ Done. Installed `allure-playwright` + `allure-commandline`, wired reporter in `p
 
 `test.step()` decorators added to all Page Object action methods (`LoginPage`, `SignUpPage`, `HomePage`, `ArticlePage`, `CreateArticlePage`, `ProfilePage`) for granular step hierarchy in Allure reports.
 
-Trace attachment for failed tests: `context.tracing.start()` in both `authedPage` and `authedTestUserPage` fixture setup; `context.tracing.stop()` + `testInfo.attach('trace', ...)` in `finally` block on failure. Link to `trace.playwright.dev` also attached so trace.zip can be opened online without installing Playwright locally.
+Trace and video attachment for failed tests: `context.tracing.start()` and `recordVideo` in both `authedPage` and `authedTestUserPage` fixture setup; `context.tracing.stop()` + `testInfo.attach('trace', ...)` + `testInfo.attach('video', ...)` in `finally` block on failure. Video uses retain-on-failure pattern — recorded always, attached and kept only on failure. Link to `trace.playwright.dev` also attached so trace.zip can be opened online without installing Playwright locally. Playwright does not apply `playwright.config.ts` video settings to manually created contexts — `recordVideo` must be passed explicitly in each fixture.
 
 Screenshots on failure handled by Playwright's built-in screenshot config.
 
