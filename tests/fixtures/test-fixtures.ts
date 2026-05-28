@@ -164,6 +164,7 @@ export const test = base.extend<CustomFixtures>({
         await context.tracing.stop({ path: tracePath });
         await page.close();
         await context.close();
+        console.log('Attachments after close:', JSON.stringify(testInfo.attachments, null, 2));
         await testInfo.attach('trace', {
           path: tracePath,
           contentType: 'application/zip',
