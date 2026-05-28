@@ -147,35 +147,30 @@ export const test = base.extend<CustomFixtures>({
       await use(page);
     } finally {
       /*
-       * Attach trace and video only when the test actually failed.
-       * Skipping on pass keeps allure-results lean — these files can be
-       * several MB per test and are only useful for debugging failures.
+       * Attach trace only when the test actually failed.
+       * Skipping on pass keeps allure-results lean — trace can be
+       * several MB per test and is only useful for debugging failures.
        *
-       * Order matters for video:
-       *   1. Save video object reference before closing context
-       *   2. Close context — this flushes the video file to disk
-       *   3. saveAs copies video to testInfo.outputDir so allure-playwright
-       *      can find and include it in the report
+       * Video handling — retain-on-failure pattern:
+       * Playwright does not apply playwright.config.ts video settings to
+       * manually created contexts, so recordVideo is passed explicitly.
+       * Calling page.close() before context.close() triggers Playwright's
+       * internal mechanism that adds video to testInfo.attachments —
+       * the same way it works for plain page fixture. allure-playwright
+       * then picks it up automatically in onTestEnd.
        */
       if (testInfo.status !== testInfo.expectedStatus) {
         const tracePath = testInfo.outputPath('trace.zip');
         await context.tracing.stop({ path: tracePath });
-        const video = page.video();
+        await page.close();
         await context.close();
         await testInfo.attach('trace', {
           path: tracePath,
           contentType: 'application/zip',
         });
-        if (video) {
-          const videoPath = testInfo.outputPath('video.webm');
-          await video.saveAs(videoPath);
-          await allure.attachmentPath('video', videoPath, {
-            contentType: 'video/webm',
-            fileExtension: 'webm',
-          });
-        }
       } else {
         await context.tracing.stop();
+        await page.close();
         await context.close();
       }
     }
@@ -325,30 +320,30 @@ export const test = base.extend<CustomFixtures>({
       await use(page);
     } finally {
       /*
-       * Attach trace and video only when the test actually failed.
-       * Same retain-on-failure pattern and ordering as authedPage.
-       * saveAs copies video to testInfo.outputDir so allure-playwright
-       * can find and include it in the report.
+       * Attach trace only when the test actually failed.
+       * Skipping on pass keeps allure-results lean — trace can be
+       * several MB per test and is only useful for debugging failures.
+       *
+       * Video handling — retain-on-failure pattern:
+       * Playwright does not apply playwright.config.ts video settings to
+       * manually created contexts, so recordVideo is passed explicitly.
+       * Calling page.close() before context.close() triggers Playwright's
+       * internal mechanism that adds video to testInfo.attachments —
+       * the same way it works for plain page fixture. allure-playwright
+       * then picks it up automatically in onTestEnd.
        */
       if (testInfo.status !== testInfo.expectedStatus) {
         const tracePath = testInfo.outputPath('trace.zip');
         await context.tracing.stop({ path: tracePath });
-        const video = page.video();
+        await page.close();
         await context.close();
         await testInfo.attach('trace', {
           path: tracePath,
           contentType: 'application/zip',
         });
-        if (video) {
-          const videoPath = testInfo.outputPath('video.webm');
-          await video.saveAs(videoPath);
-          await allure.attachmentPath('video', videoPath, {
-            contentType: 'video/webm',
-            fileExtension: 'webm',
-          });
-        }
       } else {
         await context.tracing.stop();
+        await page.close();
         await context.close();
       }
     }
