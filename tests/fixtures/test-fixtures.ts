@@ -166,6 +166,7 @@ export const test = base.extend<CustomFixtures>({
         });
         if (video) {
           const videoPath = await video.path();
+          console.log('Video path in CI:', videoPath);
           if (videoPath) {
             await testInfo.attach('video', {
               path: videoPath,
