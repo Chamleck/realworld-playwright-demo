@@ -73,9 +73,11 @@ test.describe('Registration @auth', () => {
     await signUpPage.register(user.username, user.email, user.password);
     await responsePromise;
 
-   await homePage.waitForURL('/');
-   await expect(homePage.getNavProfile(user.username)).toBeVisible();
-   
+    await homePage.waitForURL('/');
+    await expect(homePage.getNavProfile(user.username)).toBeVisible();
+
+    await profilePage.gotoSettings();
+    await profilePage.waitForURL('/settings');
     await profilePage.logout();
 
     await expect(homePage.navSignIn).toBeVisible();
@@ -87,7 +89,7 @@ test.describe('Registration @auth', () => {
 /* ================================================================== */
 
 test.describe('Registration validation @auth', () => {
-  
+
   for (const invalidUser of usersData.invalidUsers) {
 
     test(`should reject: ${invalidUser.description}`, async ({ page }) => {
