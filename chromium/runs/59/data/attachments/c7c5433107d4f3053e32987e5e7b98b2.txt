@@ -1,0 +1,3 @@
+Test status: failed
+Expected status: passed
+Video path in CI: /home/runner/work/realworld-playwright-demo/realworld-playwright-demo/test-results/page@9fda2393410c0e228970066ad1d92d96.webm
