@@ -75,12 +75,13 @@ export default defineConfig({
   use: {
     baseURL: BASE_URL,
 
-    /*
-     * Trace: recorded only on first retry of a failed test.
-     * Zero overhead for passing tests, full debugging info when needed.
+     /*
+     * Trace: recorded for every attempt, retained only on failure.
+     * Consistent with screenshot and video behavior — zero overhead for
+     * passing tests, full debugging info when needed.
      * Open with: npx playwright show-trace <path-to-trace.zip>
      */
-    trace: 'on-first-retry',
+    trace: 'retain-on-failure',
 
     /* Screenshot and video only captured for failed tests — saves disk in CI */
     screenshot: 'only-on-failure',
