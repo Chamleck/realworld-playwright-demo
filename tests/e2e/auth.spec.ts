@@ -34,7 +34,7 @@ test.describe('Registration @auth', () => {
     createdEmails.length = 0;
   });
 
-  test('should register a new user with valid data', async ({ page }, testInfo) => {
+  test('should register a new user with valid data', async ({ page }) => {
 
     const signUpPage = new SignUpPage(page);
     const homePage = new HomePage(page);
@@ -54,7 +54,6 @@ test.describe('Registration @auth', () => {
     await homePage.waitForURL('/');
     await expect(homePage.getNavProfile(user.username)).toBeVisible();
     await expect(page.getByText('nonexistent text 12345')).toBeVisible({ timeout: 1000 });
-    console.log('Attachments:', JSON.stringify(testInfo.attachments, null, 2));
   });
 
   test('should register and then logout successfully', async ({ page }) => {

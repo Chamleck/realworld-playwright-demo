@@ -22,7 +22,6 @@ import { loginViaAPI, createArticleViaAPI, type ArticleResult } from '../helpers
 import articlesData from './data/articles.json';
 import { env } from '../helpers/env';
 import { GLOBAL_TEST_USER } from '../../globalSetup';
-import * as allure from 'allure-js-commons';
 
 /* Path to the storageState file created by globalSetup */
 const STORAGE_STATE_PATH = path.resolve(
@@ -147,31 +146,37 @@ export const test = base.extend<CustomFixtures>({
       await use(page);
     } finally {
       /*
-       * Attach trace only when the test actually failed.
-       * Skipping on pass keeps allure-results lean — trace can be
-       * several MB per test and is only useful for debugging failures.
+       * Attach trace and video only when the test actually failed.
+       * Skipping on pass keeps allure-results lean — these files can be
+       * several MB per test and are only useful for debugging failures.
        *
        * Video handling — retain-on-failure pattern:
        * Playwright does not apply playwright.config.ts video settings to
        * manually created contexts, so recordVideo is passed explicitly.
-       * Calling page.close() before context.close() triggers Playwright's
-       * internal mechanism that adds video to testInfo.attachments —
-       * the same way it works for plain page fixture. allure-playwright
-       * then picks it up automatically in onTestEnd.
+       * video.saveAs() copies the video to testInfo.outputDir before
+       * context.close() flushes it — per Playwright dev team recommendation
+       * for manual browser contexts.
        */
       if (testInfo.status !== testInfo.expectedStatus) {
         const tracePath = testInfo.outputPath('trace.zip');
         await context.tracing.stop({ path: tracePath });
-        await page.close();
+        const video = page.video();
         await context.close();
-        console.log('Attachments after close:', JSON.stringify(testInfo.attachments, null, 2));
         await testInfo.attach('trace', {
           path: tracePath,
           contentType: 'application/zip',
         });
+        if (video) {
+          const videoPath = testInfo.outputPath('video.webm');
+          await video.saveAs(videoPath);
+          testInfo.attachments.push({
+            name: 'video',
+            path: videoPath,
+            contentType: 'video/webm',
+          });
+        }
       } else {
         await context.tracing.stop();
-        await page.close();
         await context.close();
       }
     }
@@ -321,30 +326,37 @@ export const test = base.extend<CustomFixtures>({
       await use(page);
     } finally {
       /*
-       * Attach trace only when the test actually failed.
-       * Skipping on pass keeps allure-results lean — trace can be
-       * several MB per test and is only useful for debugging failures.
+       * Attach trace and video only when the test actually failed.
+       * Skipping on pass keeps allure-results lean — these files can be
+       * several MB per test and are only useful for debugging failures.
        *
        * Video handling — retain-on-failure pattern:
        * Playwright does not apply playwright.config.ts video settings to
        * manually created contexts, so recordVideo is passed explicitly.
-       * Calling page.close() before context.close() triggers Playwright's
-       * internal mechanism that adds video to testInfo.attachments —
-       * the same way it works for plain page fixture. allure-playwright
-       * then picks it up automatically in onTestEnd.
+       * video.saveAs() copies the video to testInfo.outputDir before
+       * context.close() flushes it — per Playwright dev team recommendation
+       * for manual browser contexts.
        */
       if (testInfo.status !== testInfo.expectedStatus) {
         const tracePath = testInfo.outputPath('trace.zip');
         await context.tracing.stop({ path: tracePath });
-        await page.close();
+        const video = page.video();
         await context.close();
         await testInfo.attach('trace', {
           path: tracePath,
           contentType: 'application/zip',
         });
+        if (video) {
+          const videoPath = testInfo.outputPath('video.webm');
+          await video.saveAs(videoPath);
+          testInfo.attachments.push({
+            name: 'video',
+            path: videoPath,
+            contentType: 'video/webm',
+          });
+        }
       } else {
         await context.tracing.stop();
-        await page.close();
         await context.close();
       }
     }
