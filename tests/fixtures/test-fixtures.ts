@@ -168,7 +168,8 @@ export const test = base.extend<CustomFixtures>({
         if (video) {
           const videoPath = testInfo.outputPath('video.webm');
           await video.saveAs(videoPath);
-          await testInfo.attach('video', {
+          testInfo.attachments.push({
+            name: 'video',
             path: videoPath,
             contentType: 'video/webm',
           });
@@ -341,7 +342,8 @@ export const test = base.extend<CustomFixtures>({
         if (video) {
           const videoPath = testInfo.outputPath('video.webm');
           await video.saveAs(videoPath);
-          await testInfo.attach('video', {
+          testInfo.attachments.push({
+            name: 'video',
             path: videoPath,
             contentType: 'video/webm',
           });
