@@ -159,6 +159,8 @@ export const test = base.extend<CustomFixtures>({
         const tracePath = testInfo.outputPath('trace.zip');
         await context.tracing.stop({ path: tracePath });
         const video = page.video();
+        console.log('outputDir:', testInfo.outputDir);
+        console.log('retry:', testInfo.retry);
         await context.close();
         await testInfo.attach('trace', {
           path: tracePath,
@@ -166,6 +168,7 @@ export const test = base.extend<CustomFixtures>({
         });
         if (video) {
           const videoPath = await video.path();
+          console.log('Video path:', videoPath);
           if (videoPath) {
             await testInfo.attach('video', {
               path: videoPath,
