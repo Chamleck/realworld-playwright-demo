@@ -1,0 +1,3 @@
+outputDir: /home/runner/work/realworld-playwright-demo/realworld-playwright-demo/test-results/articles-Article-CRUD-arti-17d0a-ticle-with-comment-articles-chromium
+retry: 0
+Video path: /home/runner/work/realworld-playwright-demo/realworld-playwright-demo/test-results/articles-Article-CRUD-arti-17d0a-ticle-with-comment-articles-chromium/page@36ed9fa9e0df4d41eeec3038bf8810f8.webm
