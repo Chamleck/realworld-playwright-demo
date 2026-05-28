@@ -22,6 +22,7 @@ import { loginViaAPI, createArticleViaAPI, type ArticleResult } from '../helpers
 import articlesData from './data/articles.json';
 import { env } from '../helpers/env';
 import { GLOBAL_TEST_USER } from '../../globalSetup';
+import * as allure from 'allure-js-commons';
 
 /* Path to the storageState file created by globalSetup */
 const STORAGE_STATE_PATH = path.resolve(
@@ -168,10 +169,9 @@ export const test = base.extend<CustomFixtures>({
         if (video) {
           const videoPath = testInfo.outputPath('video.webm');
           await video.saveAs(videoPath);
-          testInfo.attachments.push({
-            name: 'video',
-            path: videoPath,
+          await allure.attachmentPath('video', videoPath, {
             contentType: 'video/webm',
+            fileExtension: 'webm',
           });
         }
       } else {
@@ -342,10 +342,9 @@ export const test = base.extend<CustomFixtures>({
         if (video) {
           const videoPath = testInfo.outputPath('video.webm');
           await video.saveAs(videoPath);
-          testInfo.attachments.push({
-            name: 'video',
-            path: videoPath,
+          await allure.attachmentPath('video', videoPath, {
             contentType: 'video/webm',
+            fileExtension: 'webm',
           });
         }
       } else {
