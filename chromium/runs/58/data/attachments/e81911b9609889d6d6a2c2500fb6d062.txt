@@ -1,0 +1,1 @@
+Video path in CI: /home/runner/work/realworld-playwright-demo/realworld-playwright-demo/test-results/page@a75ba62521269b76691b4accdafed81f.webm
