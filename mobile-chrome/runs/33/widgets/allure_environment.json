@@ -1,0 +1,1 @@
+[{"name":"Browser","values":["mobile-chrome"]},{"name":"Base","values":["URL=http://localhost:3000"]},{"name":"Target","values":["environment=dev"]},{"name":"Branch","values":["tests/e2e-suite"]},{"name":"Commit","values":["140455e13d27cbd53f23ff5864efff92b0bc9a8e"]},{"name":"Run","values":["number=33"]}]
