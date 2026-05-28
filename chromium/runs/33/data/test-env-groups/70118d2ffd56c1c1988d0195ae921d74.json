@@ -1,1 +1,1 @@
-{"id":"70118d2ffd56c1c1988d0195ae921d74","fullName":"auth.spec.ts:56:7","name":"should register and then logout successfully","status":"passed","testResultsByEnv":{"default":"2c63019c6ca56a747abb7e4ae9aa2a99"}}
+{"id":"70118d2ffd56c1c1988d0195ae921d74","fullName":"auth.spec.ts:58:7","name":"should register and then logout successfully","status":"passed","testResultsByEnv":{"default":"4faf9a3116734b85e6f38c329ae4cdda"}}

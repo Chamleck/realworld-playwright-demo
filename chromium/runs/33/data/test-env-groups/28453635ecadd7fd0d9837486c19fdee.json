@@ -1,1 +1,1 @@
-{"id":"28453635ecadd7fd0d9837486c19fdee","fullName":"articles.spec.ts:87:7","name":"should create an article and verify its content @smoke","status":"passed","testResultsByEnv":{"default":"d2c42d3fa29d9e60618f72697f1f6e27"}}
+{"id":"28453635ecadd7fd0d9837486c19fdee","fullName":"articles.spec.ts:89:7","name":"should create an article and verify its content @smoke","status":"passed","testResultsByEnv":{"default":"0bd5fddae9f6f239f4bb4b27dac856e0"}}
