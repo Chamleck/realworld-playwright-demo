@@ -122,9 +122,9 @@ export const test = base.extend<CustomFixtures>({
    */
   authedPage: async ({ browser }, use, testInfo) => {
     const context = await browser.newContext({
-    storageState: STORAGE_STATE_PATH,
-    recordVideo: { dir: 'test-results/' },
-  });
+      storageState: STORAGE_STATE_PATH,
+      recordVideo: { dir: testInfo.outputDir },
+    });
 
     /*
      * Start tracing manually so we control when it stops.
@@ -153,28 +153,25 @@ export const test = base.extend<CustomFixtures>({
        * Order matters for video:
        *   1. Save video object reference before closing context
        *   2. Close context — this flushes the video file to disk
-       *   3. Resolve video path and attach — file is ready after close
+       *   3. saveAs copies video to testInfo.outputDir so allure-playwright
+       *      can find and include it in the report
        */
-      console.log('Test status:', testInfo.status);
-      console.log('Expected status:', testInfo.expectedStatus);
       if (testInfo.status !== testInfo.expectedStatus) {
         const tracePath = testInfo.outputPath('trace.zip');
         await context.tracing.stop({ path: tracePath });
         const video = page.video();
-        await context.close(); 
+        await context.close();
         await testInfo.attach('trace', {
           path: tracePath,
           contentType: 'application/zip',
         });
         if (video) {
-          const videoPath = await video.path();
-          console.log('Video path in CI:', videoPath);
-          if (videoPath) {
-            await testInfo.attach('video', {
-              path: videoPath,
-              contentType: 'video/webm',
-            });
-          }
+          const videoPath = testInfo.outputPath('video.webm');
+          await video.saveAs(videoPath);
+          await testInfo.attach('video', {
+            path: videoPath,
+            contentType: 'video/webm',
+          });
         }
       } else {
         await context.tracing.stop();
@@ -304,7 +301,7 @@ export const test = base.extend<CustomFixtures>({
           },
         ],
       },
-      recordVideo: { dir: 'test-results/' },
+      recordVideo: { dir: testInfo.outputDir },
     });
 
     /*
@@ -329,6 +326,8 @@ export const test = base.extend<CustomFixtures>({
       /*
        * Attach trace and video only when the test actually failed.
        * Same retain-on-failure pattern and ordering as authedPage.
+       * saveAs copies video to testInfo.outputDir so allure-playwright
+       * can find and include it in the report.
        */
       if (testInfo.status !== testInfo.expectedStatus) {
         const tracePath = testInfo.outputPath('trace.zip');
@@ -340,13 +339,12 @@ export const test = base.extend<CustomFixtures>({
           contentType: 'application/zip',
         });
         if (video) {
-          const videoPath = await video.path();
-          if (videoPath) {
-            await testInfo.attach('video', {
-              path: videoPath,
-              contentType: 'video/webm',
-            });
-          }
+          const videoPath = testInfo.outputPath('video.webm');
+          await video.saveAs(videoPath);
+          await testInfo.attach('video', {
+            path: videoPath,
+            contentType: 'video/webm',
+          });
         }
       } else {
         await context.tracing.stop();
