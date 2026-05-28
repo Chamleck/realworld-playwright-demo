@@ -122,9 +122,9 @@ export const test = base.extend<CustomFixtures>({
    */
   authedPage: async ({ browser }, use, testInfo) => {
     const context = await browser.newContext({
-      storageState: STORAGE_STATE_PATH,
-      recordVideo: { dir: testInfo.outputDir },
-    });
+    storageState: STORAGE_STATE_PATH,
+    recordVideo: { dir: 'test-results/' },
+  });
 
     /*
      * Start tracing manually so we control when it stops.
@@ -159,8 +159,6 @@ export const test = base.extend<CustomFixtures>({
         const tracePath = testInfo.outputPath('trace.zip');
         await context.tracing.stop({ path: tracePath });
         const video = page.video();
-        console.log('outputDir:', testInfo.outputDir);
-        console.log('retry:', testInfo.retry);
         await context.close();
         await testInfo.attach('trace', {
           path: tracePath,
@@ -168,7 +166,6 @@ export const test = base.extend<CustomFixtures>({
         });
         if (video) {
           const videoPath = await video.path();
-          console.log('Video path:', videoPath);
           if (videoPath) {
             await testInfo.attach('video', {
               path: videoPath,
@@ -304,7 +301,7 @@ export const test = base.extend<CustomFixtures>({
           },
         ],
       },
-      recordVideo: { dir: testInfo.outputDir },
+      recordVideo: { dir: 'test-results/' },
     });
 
     /*
