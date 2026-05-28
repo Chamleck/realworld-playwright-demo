@@ -146,17 +146,16 @@ export const test = base.extend<CustomFixtures>({
       await use(page);
     } finally {
       /*
-       * Attach trace and video only when the test actually failed.
-       * Skipping on pass keeps allure-results lean — these files can be
-       * several MB per test and are only useful for debugging failures.
-       *
        * Video handling — retain-on-failure pattern:
        * Playwright does not apply playwright.config.ts video settings to
        * manually created contexts, so recordVideo is passed explicitly.
-       * video.saveAs() copies the video to testInfo.outputDir before
-       * context.close() flushes it — per Playwright dev team recommendation
-       * for manual browser contexts.
-       */
+       * video.saveAs() copies video to testInfo.outputDir, then
+       * testInfo.attachments.push() registers it — per Playwright dev team
+       * recommendation for manual browser contexts (github.com/microsoft/playwright/issues/14164).
+       * Note: allure-playwright reads testInfo.attachments in onTestEnd before
+       * this finally block runs — video appears in CI artifacts and Playwright
+       * HTML report but not in Allure report due to this timing limitation.
+      */
       if (testInfo.status !== testInfo.expectedStatus) {
         const tracePath = testInfo.outputPath('trace.zip');
         await context.tracing.stop({ path: tracePath });
@@ -326,17 +325,16 @@ export const test = base.extend<CustomFixtures>({
       await use(page);
     } finally {
       /*
-       * Attach trace and video only when the test actually failed.
-       * Skipping on pass keeps allure-results lean — these files can be
-       * several MB per test and are only useful for debugging failures.
-       *
        * Video handling — retain-on-failure pattern:
        * Playwright does not apply playwright.config.ts video settings to
        * manually created contexts, so recordVideo is passed explicitly.
-       * video.saveAs() copies the video to testInfo.outputDir before
-       * context.close() flushes it — per Playwright dev team recommendation
-       * for manual browser contexts.
-       */
+       * video.saveAs() copies video to testInfo.outputDir, then
+       * testInfo.attachments.push() registers it — per Playwright dev team
+       * recommendation for manual browser contexts (github.com/microsoft/playwright/issues/14164).
+       * Note: allure-playwright reads testInfo.attachments in onTestEnd before
+       * this finally block runs — video appears in CI artifacts and Playwright
+       * HTML report but not in Allure report due to this timing limitation.
+      */
       if (testInfo.status !== testInfo.expectedStatus) {
         const tracePath = testInfo.outputPath('trace.zip');
         await context.tracing.stop({ path: tracePath });

@@ -53,7 +53,6 @@ test.describe('Registration @auth', () => {
 
     await homePage.waitForURL('/');
     await expect(homePage.getNavProfile(user.username)).toBeVisible();
-    await expect(page.getByText('nonexistent text 12345')).toBeVisible({ timeout: 1000 });
   });
 
   test('should register and then logout successfully', async ({ page }) => {

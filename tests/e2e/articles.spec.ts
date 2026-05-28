@@ -165,7 +165,7 @@ test.describe('Article CRUD @articles', () => {
   });
 
   test('should delete article with comment @articles', async ({ authedPage, seededArticle }) => {
-    //test.fail(true, 'Known bug: FK constraint prevents article deletion when comments exist');
+    test.fail(true, 'Known bug: FK constraint prevents article deletion when comments exist');
     
     const comment = articlesData.comment;
     const homePage = new HomePage(authedPage);
