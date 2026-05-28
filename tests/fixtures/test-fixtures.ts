@@ -164,10 +164,6 @@ export const test = base.extend<CustomFixtures>({
           path: tracePath,
           contentType: 'application/zip',
         });
-        await testInfo.attach('open trace in playwright viewer', {
-          body: Buffer.from('https://trace.playwright.dev'),
-          contentType: 'text/uri-list',
-        });
         if (video) {
           const videoPath = await video.path();
           if (videoPath) {
@@ -339,10 +335,6 @@ export const test = base.extend<CustomFixtures>({
         await testInfo.attach('trace', {
           path: tracePath,
           contentType: 'application/zip',
-        });
-        await testInfo.attach('open trace in playwright viewer', {
-          body: Buffer.from('https://trace.playwright.dev'),
-          contentType: 'text/uri-list',
         });
         if (video) {
           const videoPath = await video.path();
