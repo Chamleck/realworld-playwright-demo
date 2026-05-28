@@ -74,11 +74,8 @@ test.describe('Registration @auth', () => {
     await responsePromise;
 
    await homePage.waitForURL('/');
-   await page.waitForLoadState('networkidle');
    await expect(homePage.getNavProfile(user.username)).toBeVisible();
-
-
-    await profilePage.gotoSettings();
+   
     await profilePage.logout();
 
     await expect(homePage.navSignIn).toBeVisible();
@@ -90,7 +87,9 @@ test.describe('Registration @auth', () => {
 /* ================================================================== */
 
 test.describe('Registration validation @auth', () => {
+  
   for (const invalidUser of usersData.invalidUsers) {
+
     test(`should reject: ${invalidUser.description}`, async ({ page }) => {
 
       const signUpPage = new SignUpPage(page);
@@ -168,7 +167,7 @@ test.describe('Login @auth', () => {
   });
 
   test('should reject login with invalid credentials', async ({ page }) => {
-    
+
     const invalidUser = usersData.invalidUsers[2]!;
 
     const loginPage = new LoginPage(page);
