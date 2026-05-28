@@ -155,11 +155,13 @@ export const test = base.extend<CustomFixtures>({
        *   2. Close context — this flushes the video file to disk
        *   3. Resolve video path and attach — file is ready after close
        */
+      console.log('Test status:', testInfo.status);
+      console.log('Expected status:', testInfo.expectedStatus);
       if (testInfo.status !== testInfo.expectedStatus) {
         const tracePath = testInfo.outputPath('trace.zip');
         await context.tracing.stop({ path: tracePath });
         const video = page.video();
-        await context.close();
+        await context.close(); 
         await testInfo.attach('trace', {
           path: tracePath,
           contentType: 'application/zip',
