@@ -17,7 +17,6 @@ import {
   HomePage,
   CreateArticlePage,
   ArticlePage,
-  ProfilePage,
 } from '../pages';
 import { GLOBAL_TEST_USER } from '../../globalSetup';
 import articlesData from '../fixtures/data/articles.json';

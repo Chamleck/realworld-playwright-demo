@@ -207,7 +207,7 @@ const dataTest = base.extend<{
  * Playwright owns this context — video, trace, screenshot from
  * playwright.config.ts apply natively without any manual setup.
  */
-export const authedTest = dataTest.extend<{}>({
+export const authedTest = dataTest.extend({
   /*
    * Override native context with GLOBAL_TEST_USER storageState.
    * page fixture is automatically created inside this context.
@@ -240,7 +240,7 @@ export const authedTest = dataTest.extend<{}>({
  * Same native context override pattern as authedTest — Playwright owns
  * this context and handles artifacts correctly.
  */
-export const dynamicAuthedTest = dataTest.extend<{}>({
+export const dynamicAuthedTest = dataTest.extend({
   /*
    * Override native context with testUser credentials.
    * testUser is resolved first (inherited from dataTest), then context
