@@ -3,23 +3,23 @@
  *
  * Architecture — three-layer inheritance:
  *
- *   base (Playwright built-in)
- *     └── dataTest — data fixtures shared across all authenticated tests
- *           ├── authedTest — overrides context with GLOBAL_TEST_USER session
- *           └── dynamicAuthedTest — overrides context with unique per-test user
+ * base (Playwright built-in)
+ * └── dataTest — data fixtures shared across all authenticated tests
+ * ├── authedTest — overrides contextOptions with GLOBAL_TEST_USER session
+ * └── dynamicAuthedTest — overrides contextOptions with unique per-test user
  *
- * Why context override instead of custom page fixtures:
- *   Overriding the native `context` fixture tells Playwright this is the
- *   primary test context. Playwright then applies playwright.config.ts
- *   settings (video, trace, screenshot) natively and finalizes artifacts
- *   before onTestEnd — so allure-playwright picks them up correctly.
- *   Custom browser.newContext() calls are invisible to Playwright's
- *   lifecycle, causing video/trace to miss the Allure report.
+ * Why contextOptions override instead of context override:
+ * Overriding the native `contextOptions` allows us to inject storageState and 
+ * localStorage dynamically in runtime, while leaving the lifecycle of the browser 
+ * context entirely to Playwright. 
+ * This bypasses the known Playwright bug (#35397) where explicit context.close() 
+ * inside custom context fixtures drops video attachments before allure-playwright 
+ * can collect them.
  *
  * Usage in specs:
- *   import { authedTest as test, expect } from '../fixtures/test-fixtures';
- *   import { dynamicAuthedTest as test, expect } from '../fixtures/test-fixtures';
- *   // auth.spec.ts uses plain: import { test, expect } from '@playwright/test';
+ * import { authedTest as test, expect } from '../fixtures/test-fixtures';
+ * import { dynamicAuthedTest as test, expect } from '../fixtures/test-fixtures';
+ * // auth.spec.ts uses plain: import { test, expect } from '@playwright/test';
  */
 
 import { test as base, expect } from '@playwright/test';
@@ -37,23 +37,13 @@ const STORAGE_STATE_PATH = path.resolve(
 );
 
 /* ------------------------------------------------------------------ */
-/*  Fixture types                                                      */
+/* Fixture types                                                     */
 /* ------------------------------------------------------------------ */
 
-/**
- * TestUser — what the testUser fixture provides to the test.
- * Includes DB fields plus the plaintext password (for login via UI if needed).
- */
 interface TestUser extends SeedUserResult {
   password: string;
 }
 
-/**
- * SeededArticle — what the seededArticle fixture provides to the test.
- * Fields are listed explicitly so the fixture's contract is decoupled
- * from any helper return type — if createArticleViaAPI ever returns extra
- * fields, the fixture surface stays controlled.
- */
 interface SeededArticle {
   slug: string;
   title: string;
@@ -61,11 +51,6 @@ interface SeededArticle {
   body: string;
 }
 
-/**
- * ProfileUpdate — what the profileUpdate fixture provides to the test.
- * Contains unique profile data generated per test to avoid
- * email/username collisions when tests run in parallel.
- */
 interface ProfileUpdate {
   username: string;
   bio: string;
@@ -74,51 +59,14 @@ interface ProfileUpdate {
 }
 
 /* ------------------------------------------------------------------ */
-/*  Layer 1: dataTest — shared data fixtures                          */
+/* Layer 1: dataTest — shared data fixtures                          */
 /* ------------------------------------------------------------------ */
 
-/**
- * dataTest — base layer with data fixtures shared across all tests.
- *
- * Defines seededArticle, testUser, profileUpdate in one place.
- * authedTest and dynamicAuthedTest inherit these via extend chaining —
- * no duplication, single source of truth for each fixture.
- *
- * These fixtures are data-only — they don't depend on browser context
- * and work correctly regardless of which context override is active.
- */
 const dataTest = base.extend<{
   seededArticle: SeededArticle;
   testUser: TestUser;
   profileUpdate: ProfileUpdate;
 }>({
-  /**
-   * seededArticle fixture.
-   *
-   * Creates a unique article via the tRPC API before the test,
-   * provides article data (slug, title, description, body) to the test,
-   * deletes the article after — even if the test fails.
-   *
-   * Why API instead of UI?
-   *   - Creating articles via UI in parallel causes slug collisions:
-   *     multiple workers submit "Test Article" at nearly the same time,
-   *     the server generates test-article-1 for all of them → unique constraint fails.
-   *   - API creation is atomic and uses the GLOBAL_TEST_USER JWT token.
-   *   - Tests that need an existing article as a precondition (edit, delete,
-   *     comment, favorite) should use this fixture.
-   *   - Tests that verify the article creation UI should create via UI directly.
-   *
-   * Uniqueness:
-   *   Title = base title + timestamp + parallelIndex
-   *   e.g. "Test Article 1714000001234_w0"
-   *   This guarantees unique slugs even across parallel workers.
-   *
-   * Lifecycle:
-   *   1. Login as GLOBAL_TEST_USER via API to get JWT token
-   *   2. Create article via API with unique title
-   *   3. yield article data to the test
-   *   4. Delete article via Prisma after the test
-   */
   seededArticle: async ({}, use, testInfo) => {
     const uniqueId = `${Date.now()}_w${testInfo.parallelIndex}`;
     const article = articlesData.validArticle;
@@ -142,22 +90,6 @@ const dataTest = base.extend<{
     }
   },
 
-  /**
-   * testUser fixture.
-   *
-   * Creates a unique user in the test DB before the test,
-   * provides user data to the test, deletes the user after.
-   *
-   * Uniqueness is guaranteed by combining:
-   *   - Date.now() — millisecond timestamp
-   *   - testInfo.parallelIndex — worker number (0, 1, 2...)
-   *
-   * Lifecycle:
-   *   1. Generate unique email/username
-   *   2. Seed user in DB via Prisma
-   *   3. yield user data to the test
-   *   4. Delete user (and all their articles/comments) after the test
-   */
   testUser: async ({}, use, testInfo) => {
     const uniqueId = `${Date.now()}_w${testInfo.parallelIndex}`;
     const password = 'Test1234!';
@@ -175,14 +107,6 @@ const dataTest = base.extend<{
     }
   },
 
-  /**
-   * profileUpdate fixture.
-   *
-   * Generates unique profile update data per test to avoid
-   * email/username collisions when tests run in parallel.
-   *
-   * Lifecycle: stateless — just generates data, no cleanup needed.
-   */
   profileUpdate: async ({}, use, testInfo) => {
     const uniqueId = `${Date.now()}_w${testInfo.parallelIndex}`;
     await use({
@@ -195,66 +119,40 @@ const dataTest = base.extend<{
 });
 
 /* ------------------------------------------------------------------ */
-/*  Layer 2a: authedTest — GLOBAL_TEST_USER session                   */
+/* Layer 2a: authedTest — GLOBAL_TEST_USER session                    */
 /* ------------------------------------------------------------------ */
 
 /**
- * authedTest — inherits dataTest, overrides context with GLOBAL_TEST_USER.
- *
- * Tests receive a `page` already logged in as GLOBAL_TEST_USER.
- * seededArticle and profileUpdate are available via dataTest inheritance.
- *
- * Playwright owns this context — video, trace, screenshot from
- * playwright.config.ts apply natively without any manual setup.
+ * authedTest — inherits dataTest, overrides contextOptions with GLOBAL_TEST_USER.
+ * Playwright native recorder fully owns the context lifecycle.
  */
 export const authedTest = dataTest.extend({
-  /*
-   * Override native context with GLOBAL_TEST_USER storageState.
-   * page fixture is automatically created inside this context.
-   * Playwright applies config settings (video, trace, screenshot) natively.
-   */
-  context: async ({ browser, contextOptions }, use) => {
-    const context = await browser.newContext({
+  // Переопределяем опции контекста, а не сам контекст
+  contextOptions: async ({ contextOptions }, use) => {
+    await use({
       ...contextOptions,
       storageState: STORAGE_STATE_PATH,
     });
-    await use(context);
-    await context.close();
   },
 });
 
 /* ------------------------------------------------------------------ */
-/*  Layer 2b: dynamicAuthedTest — unique per-test user session        */
+/* Layer 2b: dynamicAuthedTest — unique per-test user session        */
 /* ------------------------------------------------------------------ */
 
 /**
- * dynamicAuthedTest — inherits dataTest, overrides context with testUser.
- *
- * Used in profile tests where we need to modify user data without
- * affecting GLOBAL_TEST_USER. testUser is seeded in DB before context
- * creation — Playwright resolves the dependency chain automatically:
- * testUser → context → page.
- *
- * Tests receive a `page` logged in as testUser.
- * testUser and profileUpdate are available via dataTest inheritance.
- *
- * Same native context override pattern as authedTest — Playwright owns
- * this context and handles artifacts correctly.
+ * dynamicAuthedTest — inherits dataTest, overrides contextOptions with testUser.
+ * testUser is resolved first, then its API token is injected into localStorage options.
  */
 export const dynamicAuthedTest = dataTest.extend({
-  /*
-   * Override native context with testUser credentials.
-   * testUser is resolved first (inherited from dataTest), then context
-   * uses its credentials. Playwright resolves: testUser → context → page.
-   * Token is injected directly into localStorage to avoid UI login.
-   */
-  context: async ({ browser, testUser, contextOptions }, use) => {
+  // Переопределяем опции контекста. Обрати внимание: нам больше не нужен инжект `browser`!
+  contextOptions: async ({ testUser, contextOptions }, use) => {
     const auth = await loginViaAPI({
       email: testUser.email,
       password: testUser.password,
     });
 
-    const context = await browser.newContext({
+    await use({
       ...contextOptions,
       storageState: {
         cookies: [],
@@ -266,9 +164,6 @@ export const dynamicAuthedTest = dataTest.extend({
         ],
       },
     });
-
-    await use(context);
-    await context.close();
   },
 });
 
