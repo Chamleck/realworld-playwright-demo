@@ -1,7 +1,8 @@
 /**
  * Articles E2E Tests — CRUD, Favorites, Comments
  *
- * Uses authedPage fixture (GLOBAL_TEST_USER session from globalSetup).
+ * Uses authedTest fixture (GLOBAL_TEST_USER session from globalSetup).
+ * page fixture automatically starts logged in via context override.
  *
  * Two strategies for article data:
  *   - createArticleViaUI helper: used ONLY in the test that verifies UI creation.
@@ -11,8 +12,7 @@
  * Tags: @articles, @smoke
  */
 
-import { test, expect } from '../fixtures/test-fixtures';
-import { type Page } from '@playwright/test';
+import { authedTest as test, expect } from '../fixtures/test-fixtures';
 import {
   HomePage,
   CreateArticlePage,
@@ -22,54 +22,7 @@ import {
 import { GLOBAL_TEST_USER } from '../../globalSetup';
 import articlesData from '../fixtures/data/articles.json';
 import { deleteArticle } from '../helpers/db';
-
-/* ================================================================== */
-/*  Local helper — create article via UI                               */
-/*  Used ONLY in the test that verifies UI creation flow.             */
-/* ================================================================== */
-
-/**
- * Creates an article via the editor UI.
- * Only used in 'should create an article and verify its content' test
- * because that test specifically verifies the UI creation flow.
- *
- * All other tests use the seededArticle fixture instead,
- * which creates articles via API to avoid slug collisions in parallel runs.
- */
-async function createArticleViaUI(
-  authedPage: Page,
-  createdSlugs: string[]
-): Promise<{ slug: string; articlePage: ArticlePage }> {
-  
-  const article = articlesData.validArticle;
-
-  const homePage = new HomePage(authedPage);
-  await homePage.goto();
-  await homePage.navNewArticle.click();
-  await homePage.waitForURL('/editor');
-
-  const createPage = new CreateArticlePage(authedPage);
-
-  const responsePromise = authedPage.waitForResponse(
-    (resp) => resp.url().includes('/api/trpc/articles.createArticle') && resp.status() === 200
-  );
-
-  await createPage.createArticle(
-    article.title,
-    article.description,
-    article.body,
-    article.tagList[0]
-  );
-
-  await responsePromise;
-  await homePage.waitForURL('/article/');
-
-  const articlePage = new ArticlePage(authedPage);
-  const slug = articlePage.getSlugFromURL();
-  createdSlugs.push(slug);
-
-  return { slug, articlePage };
-}
+import { createArticleViaUI } from '../helpers/articles';
 
 /* ================================================================== */
 /*  Article CRUD                                                       */
@@ -86,12 +39,12 @@ test.describe('Article CRUD @articles', () => {
     createdSlugs.length = 0;
   });
 
-  test('should create an article and verify its content @smoke', async ({ authedPage }) => {
+  test('should create an article and verify its content @smoke', async ({ page }) => {
 
     const article = articlesData.validArticle;
 
     /* This is the only test that creates via UI — we're testing the UI creation flow */
-    const { articlePage } = await createArticleViaUI(authedPage, createdSlugs);
+    const { articlePage } = await createArticleViaUI(page, createdSlugs);
 
     await expect(articlePage.articleTitle).toHaveText(article.title);
     await expect(articlePage.articleBody).toContainText(article.body);
@@ -103,9 +56,9 @@ test.describe('Article CRUD @articles', () => {
 /* ================================================================== */
 
   test.describe('Global feed @articles', () => {
-  test('should show created article in global feed @smoke', async ({ authedPage, seededArticle }) => {
+  test('should show created article in global feed @smoke', async ({ page, seededArticle }) => {
 
-    const homePage = new HomePage(authedPage);
+    const homePage = new HomePage(page);
 
     await homePage.goto();
 
@@ -117,18 +70,18 @@ test.describe('Article CRUD @articles', () => {
     });
   });
 
-  test('should create and then edit an article', async ({ authedPage, seededArticle }) => {
+  test('should create and then edit an article', async ({ page, seededArticle }) => {
 
     const updated = articlesData.updatedArticle;
 
-    const homePage = new HomePage(authedPage);
-    const articlePage = new ArticlePage(authedPage);
-    const createPage = new CreateArticlePage(authedPage);
+    const homePage = new HomePage(page);
+    const articlePage = new ArticlePage(page);
+    const createPage = new CreateArticlePage(page);
 
     /* Navigate to the seeded article page */
-    await authedPage.goto(`/article/${seededArticle.slug}`);
+    await page.goto(`/article/${seededArticle.slug}`);
 
-    const editResponse = authedPage.waitForResponse(
+    const editResponse = page.waitForResponse(
       (resp) => resp.url().includes('/api/trpc/articles.updateArticle') && resp.status() === 200
     );
 
@@ -144,15 +97,15 @@ test.describe('Article CRUD @articles', () => {
     await expect(articlePage.articleBody).toContainText(updated.body);
   });
 
-  test('should delete an article', async ({ authedPage, seededArticle }) => {
+  test('should delete an article', async ({ page, seededArticle }) => {
 
-    const homePage = new HomePage(authedPage);
-    const articlePage = new ArticlePage(authedPage);
+    const homePage = new HomePage(page);
+    const articlePage = new ArticlePage(page);
 
     /* Navigate directly to the seeded article */
-    await authedPage.goto(`/article/${seededArticle.slug}`);
+    await page.goto(`/article/${seededArticle.slug}`);
 
-    const deleteResponse = authedPage.waitForResponse(
+    const deleteResponse = page.waitForResponse(
       (resp) => resp.url().includes('/api/trpc/articles.deleteArticle') && resp.status() === 200
     );
 
@@ -160,21 +113,21 @@ test.describe('Article CRUD @articles', () => {
     await deleteResponse;
 
     await homePage.waitForURL('/');
-    await authedPage.goto(`/article/${seededArticle.slug}`);
-    await expect(authedPage).toHaveURL('/');
+    await page.goto(`/article/${seededArticle.slug}`);
+    await expect(page).toHaveURL('/');
   });
 
-  test('should delete article with comment @articles', async ({ authedPage, seededArticle }) => {
-    test.fail(true, 'Known bug: FK constraint prevents article deletion when comments exist');
+  test('should delete article with comment @articles', async ({ page, seededArticle }) => {
+    //test.fail(true, 'Known bug: FK constraint prevents article deletion when comments exist');
     
     const comment = articlesData.comment;
-    const homePage = new HomePage(authedPage);
-    const articlePage = new ArticlePage(authedPage);
+    const homePage = new HomePage(page);
+    const articlePage = new ArticlePage(page);
 
-    await authedPage.goto(`/article/${seededArticle.slug}`);
+    await page.goto(`/article/${seededArticle.slug}`);
 
     /* Add comment */
-    const commentResponse = authedPage.waitForResponse(
+    const commentResponse = page.waitForResponse(
       (resp) => resp.url().includes('/api/trpc/comments.addCommentToArticle') && resp.status() === 200
     );
 
@@ -183,7 +136,7 @@ test.describe('Article CRUD @articles', () => {
     await expect(articlePage.comments.filter({ hasText: comment.body })).toBeVisible();
 
     /* Attempt to delete article with comment — known bug: deletion fails */
-    const deleteResponse = authedPage.waitForResponse(
+    const deleteResponse = page.waitForResponse(
       (resp) => resp.url().includes('/api/trpc/articles.deleteArticle')
     );
 
@@ -193,8 +146,8 @@ test.describe('Article CRUD @articles', () => {
 
     /* After deletion should redirect to home — this is where the bug manifests */
     await homePage.waitForURL('/');
-    await authedPage.goto(`/article/${seededArticle.slug}`);
-    await expect(authedPage).toHaveURL('/');
+    await page.goto(`/article/${seededArticle.slug}`);
+    await expect(page).toHaveURL('/');
 
     /*
      * NOTE: I intentionally do NOT remove the slug from seededArticle here.
@@ -215,14 +168,14 @@ test.describe('Article CRUD @articles', () => {
 /* ================================================================== */
 
 test.describe('Article comments @articles', () => {
-  test('should add a comment to an article', async ({ authedPage, seededArticle }) => {
+  test('should add a comment to an article', async ({ page, seededArticle }) => {
 
     const comment = articlesData.comment;
-    const articlePage = new ArticlePage(authedPage);
+    const articlePage = new ArticlePage(page);
 
-    await authedPage.goto(`/article/${seededArticle.slug}`);
+    await page.goto(`/article/${seededArticle.slug}`);
 
-    const commentResponse = authedPage.waitForResponse(
+    const commentResponse = page.waitForResponse(
       (resp) => resp.url().includes('/api/trpc/comments.addCommentToArticle') && resp.status() === 200
     );
 
@@ -232,15 +185,15 @@ test.describe('Article comments @articles', () => {
     await expect(articlePage.comments.filter({ hasText: comment.body })).toBeVisible();
   });
 
-  test('should delete a comment from an article', async ({ authedPage, seededArticle }) => {
+  test('should delete a comment from an article', async ({ page, seededArticle }) => {
 
     const comment = articlesData.comment;
-    const articlePage = new ArticlePage(authedPage);
+    const articlePage = new ArticlePage(page);
 
-    await authedPage.goto(`/article/${seededArticle.slug}`);
+    await page.goto(`/article/${seededArticle.slug}`);
 
     /* Add comment first */
-    const addCommentResponse = authedPage.waitForResponse(
+    const addCommentResponse = page.waitForResponse(
       (resp) => resp.url().includes('/api/trpc/comments.addCommentToArticle') && resp.status() === 200
     );
     await articlePage.addComment(comment.body);
@@ -248,7 +201,7 @@ test.describe('Article comments @articles', () => {
     await expect(articlePage.comments.filter({ hasText: comment.body })).toBeVisible();
 
     /* Delete comment */
-    const deleteCommentResponse = authedPage.waitForResponse(
+    const deleteCommentResponse = page.waitForResponse(
       (resp) => resp.url().includes('/api/trpc/comments.removeCommentFromArticle') && resp.status() === 200
     );
 
@@ -264,9 +217,9 @@ test.describe('Article comments @articles', () => {
 /* ================================================================== */
 
 test.describe('Article favorites @articles', () => {
-  test('should add and remove a favorite', async ({ authedPage, seededArticle }) => {
+  test('should add and remove a favorite', async ({ page, seededArticle }) => {
 
-    const homePage = new HomePage(authedPage);
+    const homePage = new HomePage(page);
 
     /* Go to home and find the seeded article in feed */
     await homePage.goto();
@@ -275,7 +228,7 @@ test.describe('Article favorites @articles', () => {
     const favoriteBtn = homePage.getFavoriteButton(articlePreview);
 
     /* Add favorite */
-    const addFavoriteResponse = authedPage.waitForResponse(
+    const addFavoriteResponse = page.waitForResponse(
       (resp) => resp.url().includes('/api/trpc/favorites.addArticleAsFavorite') && resp.status() === 200
     );
 
@@ -284,7 +237,7 @@ test.describe('Article favorites @articles', () => {
     await expect(favoriteBtn).toContainText('1');
 
     /* Remove favorite */
-    const removeFavoriteResponse = authedPage.waitForResponse(
+    const removeFavoriteResponse = page.waitForResponse(
       (resp) => resp.url().includes('/api/trpc/favorites.removeArticleFromFavorite') && resp.status() === 200
    );
 

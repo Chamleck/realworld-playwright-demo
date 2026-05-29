@@ -10,7 +10,7 @@
  * Tags: @auth, @smoke
  */
 
-import { test, expect } from '../fixtures/test-fixtures';
+import { test, expect } from '@playwright/test';
 import { LoginPage, SignUpPage, HomePage, ProfilePage } from '../pages';
 import { GLOBAL_TEST_USER } from '../../globalSetup';
 import usersData from '../fixtures/data/users.json';
@@ -53,6 +53,7 @@ test.describe('Registration @auth', () => {
 
     await homePage.waitForURL('/');
     await expect(homePage.getNavProfile(user.username)).toBeVisible();
+    await expect(page.getByText('nonexistent text 12345')).toBeVisible({ timeout: 1000 });
   });
 
   test('should register and then logout successfully', async ({ page }) => {

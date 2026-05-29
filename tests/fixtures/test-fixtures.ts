@@ -1,24 +1,31 @@
 /**
  * Custom Playwright fixtures.
  *
- * Extends the base `test` object with project-specific fixtures:
- *   - authedPage: a Page with pre-loaded storageState (logged-in user)
- *   - testUser: a unique user seeded in DB, cleaned up after the test
- *   - seededArticle: a unique article created via API, cleaned up after the test
+ * Architecture — three-layer inheritance:
+ *
+ *   base (Playwright built-in)
+ *     └── dataTest — data fixtures shared across all authenticated tests
+ *           ├── authedTest — overrides context with GLOBAL_TEST_USER session
+ *           └── dynamicAuthedTest — overrides context with unique per-test user
+ *
+ * Why context override instead of custom page fixtures:
+ *   Overriding the native `context` fixture tells Playwright this is the
+ *   primary test context. Playwright then applies playwright.config.ts
+ *   settings (video, trace, screenshot) natively and finalizes artifacts
+ *   before onTestEnd — so allure-playwright picks them up correctly.
+ *   Custom browser.newContext() calls are invisible to Playwright's
+ *   lifecycle, causing video/trace to miss the Allure report.
  *
  * Usage in specs:
- *   import { test, expect } from '../fixtures/test-fixtures';
- *   // instead of:
- *   import { test, expect } from '@playwright/test';
- *
- * This is the standard Playwright pattern for sharing setup/teardown
- * logic across tests without repeating it in every spec file.
+ *   import { authedTest as test, expect } from '../fixtures/test-fixtures';
+ *   import { dynamicAuthedTest as test, expect } from '../fixtures/test-fixtures';
+ *   // auth.spec.ts uses plain: import { test, expect } from '@playwright/test';
  */
 
-import { test as base, expect, type Page } from '@playwright/test';
+import { test as base, expect } from '@playwright/test';
 import path from 'path';
 import { seedUser, deleteUser, deleteArticle, type SeedUserResult } from '../helpers/db';
-import { loginViaAPI, createArticleViaAPI, type ArticleResult } from '../helpers/api';
+import { loginViaAPI, createArticleViaAPI } from '../helpers/api';
 import articlesData from './data/articles.json';
 import { env } from '../helpers/env';
 import { GLOBAL_TEST_USER } from '../../globalSetup';
@@ -30,7 +37,7 @@ const STORAGE_STATE_PATH = path.resolve(
 );
 
 /* ------------------------------------------------------------------ */
-/*  Define custom fixture types                                        */
+/*  Fixture types                                                      */
 /* ------------------------------------------------------------------ */
 
 /**
@@ -66,118 +73,72 @@ interface ProfileUpdate {
   password: string;
 }
 
+/* ------------------------------------------------------------------ */
+/*  Layer 1: dataTest — shared data fixtures                          */
+/* ------------------------------------------------------------------ */
+
 /**
- * Declare the shape of our custom fixtures.
- * Each key becomes available as a parameter in test().
+ * dataTest — base layer with data fixtures shared across all tests.
+ *
+ * Defines seededArticle, testUser, profileUpdate in one place.
+ * authedTest and dynamicAuthedTest inherit these via extend chaining —
+ * no duplication, single source of truth for each fixture.
+ *
+ * These fixtures are data-only — they don't depend on browser context
+ * and work correctly regardless of which context override is active.
  */
-type CustomFixtures = {
-  /** Page with storageState loaded — user is already logged in */
-  authedPage: Page;
-  /** Unique user created in DB before the test, deleted after */
-  testUser: TestUser;
-  /** Page authenticated as testUser — used in profile tests */
-  authedTestUserPage: Page;
-  /**
-   * Unique article created via API before the test, deleted after.
-   * Uses a unique title (title + timestamp + parallelIndex) to avoid
-   * slug collisions when tests run in parallel.
-   */
+const dataTest = base.extend<{
   seededArticle: SeededArticle;
-  /**
-   * Unique profile update data generated per test.
-   * Uses timestamp + parallelIndex to avoid email/username collisions
-   * when profile tests run in parallel.
-   */
+  testUser: TestUser;
   profileUpdate: ProfileUpdate;
-};
-
-/* ------------------------------------------------------------------ */
-/*  Extend the base test with custom fixtures                          */
-/* ------------------------------------------------------------------ */
-
-export const test = base.extend<CustomFixtures>({
-
+}>({
   /**
-   * authedPage fixture.
+   * seededArticle fixture.
    *
-   * Creates a new browser context with storageState from globalSetup,
-   * then creates a page in that context. The page starts "logged in"
-   * because localStorage already has the JWT token.
+   * Creates a unique article via the tRPC API before the test,
+   * provides article data (slug, title, description, body) to the test,
+   * deletes the article after — even if the test fails.
    *
-   * Trace and video are started manually on the context so we can attach
-   * both directly into the Allure report on failure — no digging through
-   * separate CI artifacts.
+   * Why API instead of UI?
+   *   - Creating articles via UI in parallel causes slug collisions:
+   *     multiple workers submit "Test Article" at nearly the same time,
+   *     the server generates test-article-1 for all of them → unique constraint fails.
+   *   - API creation is atomic and uses the GLOBAL_TEST_USER JWT token.
+   *   - Tests that need an existing article as a precondition (edit, delete,
+   *     comment, favorite) should use this fixture.
+   *   - Tests that verify the article creation UI should create via UI directly.
    *
-   * Video uses retain-on-failure pattern: recorded for every test but
-   * attached to the report only on failure. Playwright does not apply
-   * playwright.config.ts video settings to manually created contexts —
-   * recordVideo must be passed explicitly here.
+   * Uniqueness:
+   *   Title = base title + timestamp + parallelIndex
+   *   e.g. "Test Article 1714000001234_w0"
+   *   This guarantees unique slugs even across parallel workers.
    *
    * Lifecycle:
-   *   1. Create context with storageState + recordVideo → page is authenticated
-   *   2. Start tracing on the context
-   *   3. yield page to the test
-   *   4. On failure: stop tracing → attach trace.zip + video to Allure report
-   *   5. Close context
+   *   1. Login as GLOBAL_TEST_USER via API to get JWT token
+   *   2. Create article via API with unique title
+   *   3. yield article data to the test
+   *   4. Delete article via Prisma after the test
    */
-  authedPage: async ({ browser }, use, testInfo) => {
-    const context = await browser.newContext({
-      storageState: STORAGE_STATE_PATH,
-      recordVideo: { dir: testInfo.outputDir },
+  seededArticle: async ({}, use, testInfo) => {
+    const uniqueId = `${Date.now()}_w${testInfo.parallelIndex}`;
+    const article = articlesData.validArticle;
+
+    const auth = await loginViaAPI({
+      email: GLOBAL_TEST_USER.email,
+      password: GLOBAL_TEST_USER.password,
     });
 
-    /*
-     * Start tracing manually so we control when it stops.
-     * screenshots: true — captures a screenshot on every action.
-     * snapshots: true — captures DOM snapshot for each action (enables
-     *   "Pick locator" and element inspection in trace viewer).
-     */
-    try {
-      await context.tracing.start({ screenshots: true, snapshots: true });
-    } catch {
-      // tracing may already be started on retry — stop and restart
-      await context.tracing.stop();
-      await context.tracing.start({ screenshots: true, snapshots: true });
-    }
-
-    const page = await context.newPage();
+    const created = await createArticleViaAPI(auth.token, {
+      title: `${article.title} ${uniqueId}`,
+      description: article.description,
+      body: article.body,
+      tagList: article.tagList,
+    });
 
     try {
-      await use(page);
+      await use(created);
     } finally {
-      /*
-       * Video handling — retain-on-failure pattern:
-       * Playwright does not apply playwright.config.ts video settings to
-       * manually created contexts, so recordVideo is passed explicitly.
-       * video.saveAs() copies video to testInfo.outputDir, then
-       * testInfo.attachments.push() registers it — per Playwright dev team
-       * recommendation for manual browser contexts (github.com/microsoft/playwright/issues/14164).
-       * Note: allure-playwright reads testInfo.attachments in onTestEnd before
-       * this finally block runs — video appears in CI artifacts and Playwright
-       * HTML report but not in Allure report due to this timing limitation.
-      */
-      if (testInfo.status !== testInfo.expectedStatus) {
-        const tracePath = testInfo.outputPath('trace.zip');
-        await context.tracing.stop({ path: tracePath });
-        const video = page.video();
-        await context.close();
-        await testInfo.attach('trace', {
-          path: tracePath,
-          contentType: 'application/zip',
-        });
-        if (video) {
-          const videoPath = testInfo.outputPath('video.webm');
-          await video.saveAs(videoPath);
-          testInfo.attachments.push({
-            name: 'video',
-            path: videoPath,
-            contentType: 'video/webm',
-          });
-        }
-      } else {
-        await context.tracing.stop();
-        await context.close();
-      }
+      await deleteArticle(created.slug);
     }
   },
 
@@ -215,78 +176,78 @@ export const test = base.extend<CustomFixtures>({
   },
 
   /**
-   * seededArticle fixture.
+   * profileUpdate fixture.
    *
-   * Creates a unique article via the tRPC API before the test,
-   * provides article data (slug, title, description, body) to the test,
-   * deletes the article after — even if the test fails.
+   * Generates unique profile update data per test to avoid
+   * email/username collisions when tests run in parallel.
    *
-   * Why API instead of UI?
-   *   - Creating articles via UI in parallel causes slug collisions:
-   *     multiple workers submit "Test Article" at nearly the same time,
-   *     the server generates test-article-1 for all of them → unique constraint fails.
-   *   - API creation is atomic and uses the GLOBAL_TEST_USER JWT token.
-   *   - Tests that need an existing article as a precondition (edit, delete,
-   *     comment, favorite) should use this fixture.
-   *   - Tests that verify the article creation UI should create via UI directly.
-   *
-   * Uniqueness:
-   *   Title = base title + timestamp + parallelIndex
-   *   e.g. "Test Article 1714000001234_w0"
-   *   This guarantees unique slugs even across parallel workers.
-   *
-   * Lifecycle:
-   *   1. Login as GLOBAL_TEST_USER via API to get JWT token
-   *   2. Create article via API with unique title
-   *   3. yield article data to the test
-   *   4. Delete article via Prisma after the test
+   * Lifecycle: stateless — just generates data, no cleanup needed.
    */
-  seededArticle: async ({}, use, testInfo) => {
+  profileUpdate: async ({}, use, testInfo) => {
     const uniqueId = `${Date.now()}_w${testInfo.parallelIndex}`;
-    const article = articlesData.validArticle;
-
-    /* Login as GLOBAL_TEST_USER to get a fresh JWT token for the API call */
-    const auth = await loginViaAPI({
-      email: GLOBAL_TEST_USER.email,
-      password: GLOBAL_TEST_USER.password,
+    await use({
+      username: `UpdatedUser_${uniqueId}`,
+      bio: 'Test bio for profile update',
+      email: `updated_${uniqueId}@mail.com`,
+      password: '22222222',
     });
-
-    /* Create article via API with a unique title */
-    const created = await createArticleViaAPI(auth.token, {
-      title: `${article.title} ${uniqueId}`,
-      description: article.description,
-      body: article.body,
-      tagList: article.tagList,
-    });
-
-    try {
-      await use(created);
-    } finally {
-      /* Cleanup: delete the article after the test */
-      await deleteArticle(created.slug);
-    }
   },
+});
 
-  /**
-   * authedTestUserPage fixture.
-   *
-   * Creates a browser context authenticated as testUser (not GLOBAL_TEST_USER).
-   * Used in profile tests where we need to modify user data without
-   * affecting the global test session.
-   *
-   * Trace and video are started manually on the context — same pattern as
-   * authedPage — so profile test failures also get both attached to the
-   * Allure report.
-   *
-   * Lifecycle:
-   *   1. Login as testUser via API to get JWT token
-   *   2. Create browser context with token in localStorage + recordVideo
-   *   3. Start tracing on the context
-   *   4. yield page to the test
-   *   5. On failure: stop tracing → attach trace.zip + video to Allure report
-   *   6. Close context
+/* ------------------------------------------------------------------ */
+/*  Layer 2a: authedTest — GLOBAL_TEST_USER session                   */
+/* ------------------------------------------------------------------ */
+
+/**
+ * authedTest — inherits dataTest, overrides context with GLOBAL_TEST_USER.
+ *
+ * Tests receive a `page` already logged in as GLOBAL_TEST_USER.
+ * seededArticle and profileUpdate are available via dataTest inheritance.
+ *
+ * Playwright owns this context — video, trace, screenshot from
+ * playwright.config.ts apply natively without any manual setup.
+ */
+export const authedTest = dataTest.extend<{}>({
+  /*
+   * Override native context with GLOBAL_TEST_USER storageState.
+   * page fixture is automatically created inside this context.
+   * Playwright applies config settings (video, trace, screenshot) natively.
    */
-  authedTestUserPage: async ({ browser, testUser }, use, testInfo) => {
+  context: async ({ browser }, use) => {
+    const context = await browser.newContext({
+      storageState: STORAGE_STATE_PATH,
+    });
+    await use(context);
+    await context.close();
+  },
+});
+
+/* ------------------------------------------------------------------ */
+/*  Layer 2b: dynamicAuthedTest — unique per-test user session        */
+/* ------------------------------------------------------------------ */
+
+/**
+ * dynamicAuthedTest — inherits dataTest, overrides context with testUser.
+ *
+ * Used in profile tests where we need to modify user data without
+ * affecting GLOBAL_TEST_USER. testUser is seeded in DB before context
+ * creation — Playwright resolves the dependency chain automatically:
+ * testUser → context → page.
+ *
+ * Tests receive a `page` logged in as testUser.
+ * testUser and profileUpdate are available via dataTest inheritance.
+ *
+ * Same native context override pattern as authedTest — Playwright owns
+ * this context and handles artifacts correctly.
+ */
+export const dynamicAuthedTest = dataTest.extend<{}>({
+  /*
+   * Override native context with testUser credentials.
+   * testUser is resolved first (inherited from dataTest), then context
+   * uses its credentials. Playwright resolves: testUser → context → page.
+   * Token is injected directly into localStorage to avoid UI login.
+   */
+  context: async ({ browser, testUser }, use) => {
     const auth = await loginViaAPI({
       email: testUser.email,
       password: testUser.password,
@@ -302,80 +263,10 @@ export const test = base.extend<CustomFixtures>({
           },
         ],
       },
-      recordVideo: { dir: testInfo.outputDir },
     });
 
-    /*
-     * Start tracing manually so we control when it stops.
-     * screenshots: true — captures a screenshot on every action.
-     * snapshots: true — captures DOM snapshot for each action (enables
-     *   "Pick locator" and element inspection in trace viewer).
-     */
-    try {
-      await context.tracing.start({ screenshots: true, snapshots: true });
-    } catch {
-      // tracing may already be started on retry — stop and restart
-      await context.tracing.stop();
-      await context.tracing.start({ screenshots: true, snapshots: true });
-    }
-
-    const page = await context.newPage();
-
-    try {
-      await use(page);
-    } finally {
-      /*
-       * Video handling — retain-on-failure pattern:
-       * Playwright does not apply playwright.config.ts video settings to
-       * manually created contexts, so recordVideo is passed explicitly.
-       * video.saveAs() copies video to testInfo.outputDir, then
-       * testInfo.attachments.push() registers it — per Playwright dev team
-       * recommendation for manual browser contexts (github.com/microsoft/playwright/issues/14164).
-       * Note: allure-playwright reads testInfo.attachments in onTestEnd before
-       * this finally block runs — video appears in CI artifacts and Playwright
-       * HTML report but not in Allure report due to this timing limitation.
-      */
-      if (testInfo.status !== testInfo.expectedStatus) {
-        const tracePath = testInfo.outputPath('trace.zip');
-        await context.tracing.stop({ path: tracePath });
-        const video = page.video();
-        await context.close();
-        await testInfo.attach('trace', {
-          path: tracePath,
-          contentType: 'application/zip',
-        });
-        if (video) {
-          const videoPath = testInfo.outputPath('video.webm');
-          await video.saveAs(videoPath);
-          testInfo.attachments.push({
-            name: 'video',
-            path: videoPath,
-            contentType: 'video/webm',
-          });
-        }
-      } else {
-        await context.tracing.stop();
-        await context.close();
-      }
-    }
-  },
-
-  /**
- * profileUpdate fixture.
- *
- * Generates unique profile update data per test to avoid
- * email/username collisions when tests run in parallel.
- *
- * Lifecycle: stateless — just generates data, no cleanup needed.
- */
-profileUpdate: async ({}, use, testInfo) => {
-  const uniqueId = `${Date.now()}_w${testInfo.parallelIndex}`;
-  await use({
-    username: `UpdatedUser_${uniqueId}`,
-    bio: 'Test bio for profile update',
-    email: `updated_${uniqueId}@mail.com`,
-    password: '22222222',
-   });
+    await use(context);
+    await context.close();
   },
 });
 

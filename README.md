@@ -102,9 +102,10 @@ Specs (tests/e2e/*.spec.ts)
         └── typed JSON templates for users, articles, comments
 
 Fixtures call Helpers (tests/helpers/)
-  ├── db.ts  — Prisma: seedUser, deleteUser, deleteArticle
-  ├── api.ts — tRPC: loginViaAPI, registerViaAPI, createArticleViaAPI
-  └── env.ts — zod-validated environment variables
+  ├── db.ts      — Prisma: seedUser, deleteUser, deleteArticle
+  ├── api.ts     — tRPC: loginViaAPI, registerViaAPI, createArticleViaAPI
+  ├── articles.ts — UI: createArticleViaUI (used only in UI creation flow test)
+  └── env.ts     — zod-validated environment variables
 </pre>
 
 ### Browser coverage
@@ -167,10 +168,12 @@ Both workflows support `dev`, `staging`, and `production` environments via a `wo
 
 ### Auth strategy
 
-`globalSetup` logs in once via tRPC API → writes `storageState.json` directly (no browser needed). Tests use:
-- `authedPage` — page pre-loaded with the global user's session (fast, no UI login). Trace recording starts on context creation — `trace.zip` attached to Allure report on failure.
-- `authedTestUserPage` — page authenticated as a freshly created `testUser` via API (for profile tests that mutate user data). Also records traces on failure.
-- plain `page` — anonymous browser context (no auth)
+`globalSetup` logs in once via tRPC API → writes `storageState.json` directly (no browser needed). Tests use three patterns:
+- `authedTest` — overrides native `context` with GLOBAL_TEST_USER storageState. `page` starts logged in. Playwright applies video/trace/screenshot natively. Used in `articles.spec.ts`.
+- `dynamicAuthedTest` — overrides native `context` with unique `testUser` credentials. Playwright resolves `testUser → context → page` automatically. Used in `profile.spec.ts`.
+- plain `page` — anonymous browser context. Used in `auth.spec.ts` which tests login/registration flows.
+
+Both `authedTest` and `dynamicAuthedTest` inherit data fixtures (`seededArticle`, `testUser`, `profileUpdate`) from a shared `dataTest` base layer via extend chaining — single definition, no duplication.
 
 ### Database isolation
 

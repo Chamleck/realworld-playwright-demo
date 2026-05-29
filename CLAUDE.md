@@ -72,6 +72,7 @@ realworld-playwright-demo/
 │   │   │   └── types.ts           # TypeScript interfaces for JSON fixtures
 │   │   └── test-fixtures.ts       # Custom fixtures
 │   ├── helpers/
+│   │   ├── articles.ts            # UI helpers: createArticleViaUI
 │   │   ├── api.ts                 # tRPC helpers: loginViaAPI, registerViaAPI, createArticleViaAPI
 │   │   ├── db.ts                  # Prisma helpers: seedUser, deleteUser, deleteArticle
 │   │   └── env.ts                 # Typed env loader with zod validation
@@ -119,18 +120,21 @@ allure-history/                    # Per-browser history files (gitignored, gene
 - **Page Objects** (`tests/pages/`) — one class per page, receives `page: Page` via constructor. All inherit from `BasePage`. All action methods wrapped in `test.step()` for granular Allure step hierarchy.
 - **Specs** (`tests/e2e/`) — test files that import fixtures and Page Objects.
 - **Data** (`tests/fixtures/data/`) — JSON test data, typed via `types.ts`.
-- **Two article creation strategies**: `createArticleViaUI` helper is used ONLY in the test that verifies the UI creation flow; all other tests where an article is a precondition use the `seededArticle` fixture (API-based, faster, parallel-safe).
+- **Two article creation strategies**: `createArticleViaUI` helper (`tests/helpers/articles.ts`) is used ONLY in the test that verifies the UI creation flow; all other tests where an article is a precondition use the `seededArticle` fixture (API-based, faster, parallel-safe).
 
 ### Auth strategy
 
 - `globalSetup` logs in pre-seeded user (`jake@jake.jake`) via tRPC API → writes storageState JSON directly to `tests/auth/.storage-state.json` (no browser needed — token from API is injected directly into the JSON structure).
-- `authedPage` fixture loads storageState → page starts logged in as the pre-seeded user. Starts `context.tracing` manually — trace.zip attached to Allure report on failure.
+- `authedTest` — specialized test instance that overrides the native `context` fixture with GLOBAL_TEST_USER storageState. Tests receive a `page` already logged in. Playwright owns this context — video, trace, screenshot apply natively from `playwright.config.ts`. Used in `articles.spec.ts`.
+- `dynamicAuthedTest` — specialized test instance that overrides the native `context` fixture with a unique per-test `testUser` session. Playwright resolves dependency chain: `testUser → context → page`. Used in `profile.spec.ts`.
 - `testUser` fixture creates a unique user in DB via Prisma → provides to test → deletes after.
-- `authedTestUserPage` depends on `testUser`: logs in as that user via API, injects JWT into `localStorage` via a fresh browser context. Used by tests that mutate user-specific state (profile updates) without polluting the pre-seeded user. Also starts `context.tracing` — trace.zip attached on failure.
 - `seededArticle` creates an article via tRPC API as the pre-seeded user → provides slug/title/description/body to test → deletes after.
 - `profileUpdate` provides unique profile data (username/email/bio/password) per test → parallel-safe via `Date.now() + testInfo.parallelIndex`. Stateless — no cleanup needed.
-- All cleanup fixtures wrap `use()` in `try/finally` so teardown runs even when the test throws.
-- Tests that don't need auth use plain `page` (no storageState).
+- All data fixtures are defined in `dataTest` base layer — `authedTest` and `dynamicAuthedTest` inherit them via extend chaining, no duplication.
+- Auth tests (`auth.spec.ts`) use plain `page` from `@playwright/test` — no storageState needed.
+
+**Why context override instead of custom page fixtures:**
+Overriding the native `context` fixture tells Playwright this is the primary test context. Playwright applies `playwright.config.ts` settings (video, trace, screenshot) natively and finalizes artifacts before `onTestEnd` — so `allure-playwright` picks them up correctly. Custom `browser.newContext()` calls are invisible to Playwright's lifecycle.
 
 ### Database strategy
 
@@ -293,7 +297,7 @@ Done. Installed `allure-playwright` + `allure-commandline`, wired reporter in `p
 
 `test.step()` decorators added to all Page Object action methods (`LoginPage`, `SignUpPage`, `HomePage`, `ArticlePage`, `CreateArticlePage`, `ProfilePage`) for granular step hierarchy in Allure reports.
 
-Trace and video attachment for failed tests: `context.tracing.start()` and `recordVideo: { dir: testInfo.outputDir }` in both `authedPage` and `authedTestUserPage` fixture setup. On failure: `context.tracing.stop()` + `testInfo.attach('trace', ...)` for trace; `video.saveAs()` + `testInfo.attachments.push()` for video — official Playwright dev team approach for manual contexts. Playwright does not apply `playwright.config.ts` video/trace settings to manually created contexts — both must be configured explicitly. Trace config changed from `on-first-retry` to `on-all-retries` — records trace on every retry including successful ones, covering both flaky tests and final failures. Known limitation: `allure-playwright` reads `testInfo.attachments` in `onTestEnd` before fixture `finally` runs — video for custom contexts appears in CI artifacts and Playwright HTML report but not in Allure report.
+Trace and video attachment: Playwright applies `playwright.config.ts` settings (`video: 'retain-on-failure'`, `trace: 'on-all-retries'`, `screenshot: 'only-on-failure'`) natively to all contexts created via the fixture override pattern. `trace: 'on-all-retries'` records trace on every retry including successful ones — covers both flaky tests and final failures. All artifacts (trace, video, screenshot) are finalized before `onTestEnd` — `allure-playwright` picks them up correctly without any manual setup in fixtures.
 
 Screenshots on failure handled by Playwright's built-in screenshot config.
 
@@ -440,7 +444,7 @@ Installing WebKit via `npx playwright install --with-deps webkit` on GitHub Acti
 - **New env variables** → add to `.env.example` + `env.ts` zod schema + GitHub Secrets + workflow env.
 - **New npm scripts** → update workflow, CLAUDE.md commands table, and README commands table in the same commit.
 - **Don't touch `src/`** unless adding `data-testid` attributes.
-- **Import test and expect** from `tests/fixtures/test-fixtures.ts`, not from `@playwright/test` directly.
+- **Import test and expect** from the appropriate test instance: `authedTest` for article tests, `dynamicAuthedTest` for profile tests, plain `@playwright/test` for auth tests.
 - **Verbose comments** are welcome — this is a learning/demo project.
 - **Tags**: use `@tagname` in test titles for filtering. Common tags: `@smoke`, `@auth`, `@articles`, `@profile`.
 - **Do not run Prettier on test files** — `tests/` is in `.prettierignore`. Tests use `semi: true`, `src/` uses `semi: false`. Running `prettier --write` on tests would break the convention.
