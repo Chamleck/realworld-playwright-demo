@@ -125,8 +125,11 @@ allure-history/                    # Per-browser history files (gitignored, gene
 ### Auth strategy
 
 - `globalSetup` logs in pre-seeded user (`jake@jake.jake`) via tRPC API → writes storageState JSON directly to `tests/auth/.storage-state.json` (no browser needed — token from API is injected directly into the JSON structure).
-- `authedTest` — specialized test instance that overrides the native `context` fixture with GLOBAL_TEST_USER storageState. Tests receive a `page` already logged in. Playwright owns this context — video, trace, screenshot apply natively from `playwright.config.ts`. Used in `articles.spec.ts`.
-- `dynamicAuthedTest` — specialized test instance that overrides the native `context` fixture with a unique per-test `testUser` session. Playwright resolves dependency chain: `testUser → context → page`. Used in `profile.spec.ts`.
+- `authedTest` — specialized test instance that overrides `contextOptions` with GLOBAL_TEST_USER storageState. Tests receive a `page` already logged in. Playwright owns the full context lifecycle — video, trace, screenshot apply natively from `playwright.config.ts`. Used in `articles.spec.ts`.
+- `dynamicAuthedTest` — specialized test instance that overrides `contextOptions` with a unique per-test `testUser` session. `testUser` is resolved first, then its API token is injected into localStorage. Playwright resolves dependency chain: `testUser → contextOptions → context → page`. Used in `profile.spec.ts`.
+- All data fixtures are defined in `dataTest` base layer — `authedTest` and `dynamicAuthedTest` inherit them via extend chaining, no duplication.
+**Why contextOptions override instead of context override:**
+Overriding `contextOptions` injects storageState/localStorage while leaving the full browser context lifecycle to Playwright. This bypasses Playwright bug #35397 — explicit `context.close()` inside custom context fixtures drops video attachments before `allure-playwright` can collect them. With `contextOptions` override Playwright creates, owns, and closes the context natively — video, trace, screenshot all work correctly without any manual code.
 - `testUser` fixture creates a unique user in DB via Prisma → provides to test → deletes after.
 - `seededArticle` creates an article via tRPC API as the pre-seeded user → provides slug/title/description/body to test → deletes after.
 - `profileUpdate` provides unique profile data (username/email/bio/password) per test → parallel-safe via `Date.now() + testInfo.parallelIndex`. Stateless — no cleanup needed.
@@ -297,7 +300,7 @@ Done. Installed `allure-playwright` + `allure-commandline`, wired reporter in `p
 
 `test.step()` decorators added to all Page Object action methods (`LoginPage`, `SignUpPage`, `HomePage`, `ArticlePage`, `CreateArticlePage`, `ProfilePage`) for granular step hierarchy in Allure reports.
 
-Trace and video attachment: Playwright applies `playwright.config.ts` settings (`video: 'retain-on-failure'`, `trace: 'on-all-retries'`, `screenshot: 'only-on-failure'`) natively to all contexts created via the fixture override pattern. `trace: 'on-all-retries'` records trace on every retry including successful ones — covers both flaky tests and final failures. All artifacts (trace, video, screenshot) are finalized before `onTestEnd` — `allure-playwright` picks them up correctly without any manual setup in fixtures.
+Trace and video attachment: Playwright applies `playwright.config.ts` settings (`video: 'retain-on-failure'`, `trace: 'on-all-retries'`, `screenshot: 'only-on-failure'`) natively to all contexts. `contextOptions` override pattern ensures Playwright fully owns the context lifecycle — no manual `context.close()` which would drop video before `allure-playwright` collects it (Playwright bug #35397). `trace: 'on-all-retries'` records trace on every retry including successful ones — covers both flaky tests and final failures.
 
 Screenshots on failure handled by Playwright's built-in screenshot config.
 

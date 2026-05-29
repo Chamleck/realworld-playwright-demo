@@ -169,11 +169,10 @@ Both workflows support `dev`, `staging`, and `production` environments via a `wo
 ### Auth strategy
 
 `globalSetup` logs in once via tRPC API → writes `storageState.json` directly (no browser needed). Tests use three patterns:
-- `authedTest` — overrides native `context` with GLOBAL_TEST_USER storageState. `page` starts logged in. Playwright applies video/trace/screenshot natively. Used in `articles.spec.ts`.
-- `dynamicAuthedTest` — overrides native `context` with unique `testUser` credentials. Playwright resolves `testUser → context → page` automatically. Used in `profile.spec.ts`.
-- plain `page` — anonymous browser context. Used in `auth.spec.ts` which tests login/registration flows.
-
-Both `authedTest` and `dynamicAuthedTest` inherit data fixtures (`seededArticle`, `testUser`, `profileUpdate`) from a shared `dataTest` base layer via extend chaining — single definition, no duplication.
+- `authedTest` — overrides `contextOptions` with GLOBAL_TEST_USER storageState. Playwright creates and owns the context — video/trace/screenshot apply natively. Used in `articles.spec.ts`.
+- `dynamicAuthedTest` — overrides `contextOptions` with unique `testUser` token injected into localStorage. Playwright resolves `testUser → contextOptions → context → page`. Used in `profile.spec.ts`.
+- Both inherit data fixtures from `dataTest` base layer — single definition, no duplication.
+- `contextOptions` override chosen over `context` override to avoid Playwright bug #35397 — explicit `context.close()` drops video attachments before reporters collect them.
 
 ### Database isolation
 

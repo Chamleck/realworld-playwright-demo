@@ -10,7 +10,7 @@
  *
  * Why contextOptions override instead of context override:
  * Overriding the native `contextOptions` allows us to inject storageState and 
- * localStorage dynamically in runtime, while leaving the lifecycle of the browser 
+ * localStorage dynamically at runtime, while leaving the lifecycle of the browser 
  * context entirely to Playwright. 
  * This bypasses the known Playwright bug (#35397) where explicit context.close() 
  * inside custom context fixtures drops video attachments before allure-playwright 
@@ -37,13 +37,23 @@ const STORAGE_STATE_PATH = path.resolve(
 );
 
 /* ------------------------------------------------------------------ */
-/* Fixture types                                                     */
+/* Fixture types                                                      */
 /* ------------------------------------------------------------------ */
 
+/**
+ * TestUser — what the testUser fixture provides to the test.
+ * Includes DB fields plus the plaintext password (for login via UI if needed).
+ */
 interface TestUser extends SeedUserResult {
   password: string;
 }
 
+/**
+ * SeededArticle — what the seededArticle fixture provides to the test.
+ * Fields are listed explicitly so the fixture's contract is decoupled
+ * from any helper return type — if createArticleViaAPI ever returns extra
+ * fields, the fixture surface stays controlled.
+ */
 interface SeededArticle {
   slug: string;
   title: string;
@@ -51,6 +61,11 @@ interface SeededArticle {
   body: string;
 }
 
+/**
+ * ProfileUpdate — what the profileUpdate fixture provides to the test.
+ * Contains unique profile data generated per test to avoid
+ * email/username collisions when tests run in parallel.
+ */
 interface ProfileUpdate {
   username: string;
   bio: string;
@@ -62,11 +77,28 @@ interface ProfileUpdate {
 /* Layer 1: dataTest — shared data fixtures                          */
 /* ------------------------------------------------------------------ */
 
+/**
+ * dataTest — base layer with data fixtures shared across all tests.
+ *
+ * Defines seededArticle, testUser, profileUpdate in one place.
+ * authedTest and dynamicAuthedTest inherit these via extend chaining —
+ * no duplication, single source of truth for each fixture.
+ *
+ * These fixtures are data-only — they don't depend on browser context
+ * and work correctly regardless of which context override is active.
+ */
 const dataTest = base.extend<{
   seededArticle: SeededArticle;
   testUser: TestUser;
   profileUpdate: ProfileUpdate;
 }>({
+  /**
+   * seededArticle fixture.
+   *
+   * Creates a unique article via the tRPC API before the test,
+   * provides article data (slug, title, description, body) to the test,
+   * deletes the article after — even if the test fails.
+   */
   seededArticle: async ({}, use, testInfo) => {
     const uniqueId = `${Date.now()}_w${testInfo.parallelIndex}`;
     const article = articlesData.validArticle;
@@ -90,6 +122,12 @@ const dataTest = base.extend<{
     }
   },
 
+  /**
+   * testUser fixture.
+   *
+   * Creates a unique user in the test DB before the test,
+   * provides user data to the test, deletes the user after.
+   */
   testUser: async ({}, use, testInfo) => {
     const uniqueId = `${Date.now()}_w${testInfo.parallelIndex}`;
     const password = 'Test1234!';
@@ -107,6 +145,12 @@ const dataTest = base.extend<{
     }
   },
 
+  /**
+   * profileUpdate fixture.
+   *
+   * Generates unique profile update data per test to avoid
+   * email/username collisions when tests run in parallel.
+   */
   profileUpdate: async ({}, use, testInfo) => {
     const uniqueId = `${Date.now()}_w${testInfo.parallelIndex}`;
     await use({
@@ -127,7 +171,7 @@ const dataTest = base.extend<{
  * Playwright native recorder fully owns the context lifecycle.
  */
 export const authedTest = dataTest.extend({
-  // Переопределяем опции контекста, а не сам контекст
+  // Override context options instead of the context itself
   contextOptions: async ({ contextOptions }, use) => {
     await use({
       ...contextOptions,
@@ -145,7 +189,7 @@ export const authedTest = dataTest.extend({
  * testUser is resolved first, then its API token is injected into localStorage options.
  */
 export const dynamicAuthedTest = dataTest.extend({
-  // Переопределяем опции контекста. Обрати внимание: нам больше не нужен инжект `browser`!
+  // Override context options. Note: we no longer need to inject the 'browser' fixture!
   contextOptions: async ({ testUser, contextOptions }, use) => {
     const auth = await loginViaAPI({
       email: testUser.email,
