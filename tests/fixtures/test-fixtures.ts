@@ -213,8 +213,9 @@ export const authedTest = dataTest.extend({
    * page fixture is automatically created inside this context.
    * Playwright applies config settings (video, trace, screenshot) natively.
    */
-  context: async ({ browser }, use) => {
+  context: async ({ browser, contextOptions }, use) => {
     const context = await browser.newContext({
+      ...contextOptions,
       storageState: STORAGE_STATE_PATH,
     });
     await use(context);
@@ -247,13 +248,14 @@ export const dynamicAuthedTest = dataTest.extend({
    * uses its credentials. Playwright resolves: testUser → context → page.
    * Token is injected directly into localStorage to avoid UI login.
    */
-  context: async ({ browser, testUser }, use) => {
+  context: async ({ browser, testUser, contextOptions }, use) => {
     const auth = await loginViaAPI({
       email: testUser.email,
       password: testUser.password,
     });
 
     const context = await browser.newContext({
+      ...contextOptions,
       storageState: {
         cookies: [],
         origins: [
