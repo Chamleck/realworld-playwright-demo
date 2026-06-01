@@ -1,1 +1,1 @@
-{"id":"1d1b22ea74b0b2689992878653a8ddbd","fullName":"articles.spec.ts:227:7","name":"should delete a comment from an article","status":"passed","testResultsByEnv":{"default":"73ffcc6d5194b7bf628a480e4dd6fb0d"}}
+{"id":"1d1b22ea74b0b2689992878653a8ddbd","fullName":"articles.spec.ts:187:7","name":"should delete a comment from an article","status":"passed","testResultsByEnv":{"default":"4d91521ded106a059dd5db66279611cb"}}

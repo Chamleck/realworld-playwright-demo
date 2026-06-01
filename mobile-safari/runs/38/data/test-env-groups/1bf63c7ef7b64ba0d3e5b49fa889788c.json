@@ -1,1 +1,1 @@
-{"id":"1bf63c7ef7b64ba0d3e5b49fa889788c","fullName":"articles.spec.ts:103:7","name":"should show created article in global feed @smoke","status":"passed","testResultsByEnv":{"default":"9b9bf744afba940fb1e6eb0429c126d5"}}
+{"id":"1bf63c7ef7b64ba0d3e5b49fa889788c","fullName":"articles.spec.ts:58:7","name":"should show created article in global feed @smoke","status":"passed","testResultsByEnv":{"default":"efea396e0f48d0f04d3d0b4cc220564d"}}

@@ -1,1 +1,1 @@
-{"id":"8cb841c07ba754f68b39ea4b38a58569","fullName":"auth.spec.ts:88:9","name":"should reject: Invalid email and short password combined","status":"passed","testResultsByEnv":{"default":"5f8ba36d90d28988bd9968aacc8c6a4e"}}
+{"id":"8cb841c07ba754f68b39ea4b38a58569","fullName":"auth.spec.ts:95:9","name":"should reject: Invalid email and short password combined","status":"passed","testResultsByEnv":{"default":"ebec76a57b2b326e8fc7f3eb39e32cc0"}}
