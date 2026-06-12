@@ -3,8 +3,8 @@ import * as path from 'node:path';
 import type { AgentTool } from '../core/types';
 
 /**
- * Resolves a project-relative path and validates it stays within the
- * project root. Returns null if the resolved path escapes the root.
+ * Resolves a project-relative path and guards against traversal outside
+ * the project root. Returns null if the path escapes the root.
  *
  * Why this guard exists:
  * The agent constructs file paths autonomously based on LLM reasoning.
@@ -79,6 +79,51 @@ export const listFilesTool: AgentTool = {
         .join('\n');
     } catch (err) {
       return `Error listing directory: ${err instanceof Error ? err.message : String(err)}`;
+    }
+  },
+};
+
+export const writeFileTool: AgentTool = {
+  name: 'write_file',
+  description:
+    'Write content to a file. Creates the file and any missing parent directories. ' +
+    'Use for generating Page Objects (tests/pages/) and spec files (tests/e2e/). ' +
+    'IMPORTANT: follow project conventions — import test/expect from ' +
+    '"tests/fixtures/test-fixtures", extend BasePage, use getByRole/getByLabel selectors.',
+  input_schema: {
+    type: 'object',
+    properties: {
+      filePath: {
+        type: 'string',
+        description: 'Path relative to project root (e.g. "tests/pages/SettingsPage.ts")',
+      },
+      content: {
+        type: 'string',
+        description: 'Full file content to write',
+      },
+    },
+    required: ['filePath', 'content'],
+  },
+  execute: async (input) => {
+    const resolved = safeResolve(input.filePath as string);
+    if (!resolved) return 'Error: path traversal outside project root is not allowed';
+
+    /*
+     * Restrict writes to tests/ and agent/ only — prevents the agent from
+     * accidentally modifying application source (src/), database (prisma/),
+     * or configuration files at the project root.
+     */
+    const relative = path.relative(process.cwd(), resolved);
+    if (!relative.startsWith('tests') && !relative.startsWith('agent')) {
+      return 'Error: write access restricted to tests/ and agent/ directories only';
+    }
+
+    try {
+      await fs.mkdir(path.dirname(resolved), { recursive: true });
+      await fs.writeFile(resolved, input.content as string, 'utf-8');
+      return `Written: ${relative} (${(input.content as string).length} chars)`;
+    } catch (err) {
+      return `Error writing file: ${err instanceof Error ? err.message : String(err)}`;
     }
   },
 };

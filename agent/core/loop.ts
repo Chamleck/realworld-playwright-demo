@@ -27,11 +27,19 @@ async function withRetry<T>(
     } catch (err) {
       lastErr = err;
 
-      const isTransient =
-        err instanceof Error &&
-        (err.message.includes('503') || err.message.includes('429'));
+      const message = err instanceof Error ? err.message : String(err);
 
-      if (!isTransient || attempt === retries) throw err;
+      /*
+       * 429 = quota exhausted — retrying won't help until the window resets
+       * (minutes to hours). Fail fast with a clear message instead of
+       * waiting and retrying, which wastes time and remaining quota.
+       */
+      if (message.includes('429')) throw err;
+
+      /*
+       * 503 = server temporarily overloaded — worth retrying with backoff.
+       */
+      if (!message.includes('503') || attempt === retries) throw err;
 
       const delay = baseDelayMs * attempt;
       console.log(`\n⚠️  API unavailable (attempt ${attempt}/${retries}), retrying in ${delay}ms...`);
@@ -166,6 +174,16 @@ export async function runAgent(
 
     /* Send all tool results in one message — Gemini processes them together */
     response = await withRetry(() => chat.sendMessage(functionResponses));
+
+    /*
+     * Optional delay between iterations — prevents hitting free-tier RPM limits.
+     * gemini-2.5-flash-lite has a 10 RPM limit; 7s between iterations keeps
+     * throughput at ~8 RPM, safely within the limit.
+     * Set iterationDelayMs in AgentConfig to enable. Omit for paid-tier models.
+     */
+    if (config.iterationDelayMs) {
+      await new Promise((resolve) => setTimeout(resolve, config.iterationDelayMs));
+    }
   }
 
   /* Fallback — max iterations reached */

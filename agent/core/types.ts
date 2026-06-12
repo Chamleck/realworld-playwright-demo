@@ -40,6 +40,8 @@ export interface AgentConfig {
   tools: AgentTool[];
   maxIterations: number;
   model: string;
+  /** Delay between iterations in ms. Use for free-tier models with low RPM limits. */
+  iterationDelayMs?: number;
 }
 
 /** Immutable record of a single tool call within one agent run */
