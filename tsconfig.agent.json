@@ -1,0 +1,17 @@
+// Separate TypeScript config for the agent/ CLI module.
+// Uses CommonJS + Node moduleResolution — agent runs as a plain Node.js
+// script via tsx, not inside the Playwright test runner.
+// Excludes tests/ and src/ to keep compilation scope minimal.
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "module": "CommonJS",
+    "moduleResolution": "Node",
+    "strict": true,
+    "esModuleInterop": true,
+    "resolveJsonModule": true,
+    "skipLibCheck": true
+  },
+  "include": ["agent/**/*.ts"],
+  "exclude": ["tests/**/*", "src/**/*", "node_modules"]
+}
