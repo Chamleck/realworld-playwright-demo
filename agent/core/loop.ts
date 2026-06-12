@@ -3,6 +3,46 @@ import type { AgentConfig, AgentResult, AgentStep } from './types';
 import { AgentLogger } from './logger';
 
 /**
+ * Retries an async operation with exponential backoff.
+ *
+ * Why this exists:
+ * Gemini API returns 503 (overload) and 429 (rate limit) as transient errors
+ * that resolve on retry. Without this, a single spike in API demand aborts
+ * the entire agent run and loses all accumulated context. Exponential backoff
+ * (2s → 4s → 6s) avoids hammering the API during a degraded period.
+ *
+ * Only retries on transient HTTP errors — non-transient errors (auth, bad
+ * request, etc.) are rethrown immediately on the first attempt.
+ */
+async function withRetry<T>(
+  fn: () => Promise<T>,
+  retries = 3,
+  baseDelayMs = 2000,
+): Promise<T> {
+  let lastErr: unknown;
+
+  for (let attempt = 1; attempt <= retries; attempt++) {
+    try {
+      return await fn();
+    } catch (err) {
+      lastErr = err;
+
+      const isTransient =
+        err instanceof Error &&
+        (err.message.includes('503') || err.message.includes('429'));
+
+      if (!isTransient || attempt === retries) throw err;
+
+      const delay = baseDelayMs * attempt;
+      console.log(`\n⚠️  API unavailable (attempt ${attempt}/${retries}), retrying in ${delay}ms...`);
+      await new Promise((resolve) => setTimeout(resolve, delay));
+    }
+  }
+
+  throw lastErr;
+}
+
+/**
  * Core ReAct (Reason + Act) loop shared by all agents.
  *
  * Gemini maintains conversation history internally via the chat object —
@@ -16,7 +56,7 @@ import { AgentLogger } from './logger';
  */
 export async function runAgent(
   config: AgentConfig,
-  userMessage: string
+  userMessage: string,
 ): Promise<AgentResult> {
   /*
    * Client is instantiated here (not at module level) so that dotenv
@@ -64,7 +104,7 @@ export async function runAgent(
    * via sendMessage() on each iteration.
    */
   const chat = model.startChat();
-  let response = await chat.sendMessage(userMessage);
+  let response = await withRetry(() => chat.sendMessage(userMessage));
 
   let iteration = 0;
 
@@ -125,7 +165,7 @@ export async function runAgent(
     }
 
     /* Send all tool results in one message — Gemini processes them together */
-    response = await chat.sendMessage(functionResponses);
+    response = await withRetry(() => chat.sendMessage(functionResponses));
   }
 
   /* Fallback — max iterations reached */

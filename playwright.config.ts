@@ -55,22 +55,26 @@ export default defineConfig({
   forbidOnly: !!process.env.CI,
 
   /*
-   * Reporters:
-   *   - allure-playwright: primary reporter, generates allure-results/ for
-   *     rich HTML report with steps, traces, screenshots, and trend history.
-   *   - list: real-time console output during test run.
-   *   - html (local only): built-in Playwright report as a quick fallback.
-   */
-  reporter: process.env.CI
-    ? [
-        ['allure-playwright', { resultsDir: 'allure-results' }],
-        ['list'],
-      ]
-    : [
-        ['allure-playwright', { resultsDir: 'allure-results' }],
-        ['html', { open: 'never' }],
-        ['list'],
-      ],
+ * Reporters:
+ *   - allure-playwright: primary reporter, generates allure-results/ for
+ *     rich HTML report with steps, traces, screenshots, and trend history.
+ *   - list: real-time console output during test run.
+ *   - html (local only): built-in Playwright report as a quick fallback.
+ *   - json: machine-readable output for the AI agent only — written to
+ *     test-results/report.json, does not affect any other reporting logic.
+ */
+ reporter: process.env.CI
+  ? [
+      ['allure-playwright', { resultsDir: 'allure-results' }],
+      ['list'],
+      ['json', { outputFile: 'test-results/report.json' }],
+    ]
+  : [
+      ['allure-playwright', { resultsDir: 'allure-results' }],
+      ['html', { open: 'never' }],
+      ['list'],
+      ['json', { outputFile: 'test-results/report.json' }],
+    ],
 
   use: {
     baseURL: BASE_URL,

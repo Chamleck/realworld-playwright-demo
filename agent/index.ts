@@ -1,16 +1,17 @@
 import * as path from 'node:path';
 import * as dotenv from 'dotenv';
 import { runAgent } from './core/loop';
-import type { AgentConfig } from './core/types';
+import { analystAgent } from './agents/analyst';
 
 /*
  * Load .env before any API clients are instantiated.
- * new Anthropic() in loop.ts reads process.env.ANTHROPIC_API_KEY
+ * new GoogleGenerativeAI() in loop.ts reads process.env.GOOGLE_AI_API_KEY
  * at call time (inside runAgent), so this is always guaranteed to run first.
  */
 dotenv.config({ path: path.resolve(process.cwd(), '.env') });
 
 const mode = process.argv[2];
+const target = process.argv[3];
 
 if (!mode || !['--analyze', '--generate'].includes(mode)) {
   console.log('Usage:');
@@ -19,30 +20,34 @@ if (!mode || !['--analyze', '--generate'].includes(mode)) {
   process.exit(1);
 }
 
-/*
- * Temporary smoke-test config — verifies the ReAct loop and API auth
- * work before real agents are wired in Phase 1 and Phase 2.
- * Will be replaced with analystAgent / generatorAgent imports.
- */
-const smokeConfig: AgentConfig = {
-  name: 'smoke-test',
-  systemPrompt: 'You are a helpful assistant. Answer briefly.',
-  tools: [],
-  maxIterations: 3,
-  model: 'gemini-2.5-flash', 
-};
-
 async function main(): Promise<void> {
-  console.log(`Mode: ${mode}`);
+  if (mode === '--analyze') {
+    /*
+     * Default report path matches Playwright's built-in last-run tracking.
+     * Can be overridden with: npm run agent:analyze path/to/report.json
+     */
+    const reportPath = target ?? 'test-results/.last-run.json';
 
-  const result = await runAgent(
-    smokeConfig,
-    'Say "Phase 0 complete" and nothing else.',
-  );
+    console.log(`\n🔍 Analyzing: ${reportPath}\n`);
 
-  console.log('\n' + '='.repeat(50));
-  console.log(result.completed ? '✅ Smoke test passed' : '❌ Smoke test failed');
-  console.log('Response:', result.response);
+    const result = await runAgent(
+      analystAgent,
+      `Analyze the Playwright test report at "${reportPath}". ` +
+      `Read it, identify all failures, read the relevant source files, ` +
+      `classify each failure, and suggest specific fixes.`,
+    );
+
+    console.log('\n' + '='.repeat(60));
+    console.log(result.completed ? '✅ Analysis complete' : '⚠️  Reached max iterations');
+    console.log(`Iterations used: ${result.iterationsUsed}`);
+    console.log('='.repeat(60));
+    console.log('\n' + result.response);
+  }
+
+  if (mode === '--generate') {
+    /* Phase 2 */
+    console.log('Test generator — coming in Phase 2');
+  }
 }
 
 main().catch(console.error);
