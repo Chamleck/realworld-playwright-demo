@@ -1,0 +1,10 @@
+node_modules/
+.next/
+allure-report/
+allure-results/
+playwright-report/
+test-results/
+prisma/
+.env
+tsconfig.tsbuildinfo
+tests/

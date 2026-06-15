@@ -1,1 +1,0 @@
-[{"name":"Browser","values":["chromium"]},{"name":"Base","values":["URL=http://localhost:3000"]},{"name":"Target","values":["environment=dev"]},{"name":"Branch","values":["tests/e2e-suite"]},{"name":"Commit","values":["3e5bc1341795bdb2cd94273e63cfe4c0967b7c78"]},{"name":"Run","values":["number=54"]}]

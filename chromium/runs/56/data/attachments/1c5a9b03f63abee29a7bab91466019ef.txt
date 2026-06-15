@@ -1,2 +1,0 @@
-outputDir: /home/runner/work/realworld-playwright-demo/realworld-playwright-demo/test-results/articles-Article-CRUD-arti-17d0a-ticle-with-comment-articles-chromium-retry2
-retry: 2

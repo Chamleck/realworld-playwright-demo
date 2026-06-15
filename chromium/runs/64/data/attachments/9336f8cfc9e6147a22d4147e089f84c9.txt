@@ -1,7 +1,0 @@
-Attachments after close: [
-  {
-    "name": "screenshot",
-    "path": "/home/runner/work/realworld-playwright-demo/realworld-playwright-demo/test-results/articles-Article-CRUD-arti-17d0a-ticle-with-comment-articles-chromium/test-failed-1.png",
-    "contentType": "image/png"
-  }
-]

@@ -1,2 +1,0 @@
-Test status: failed
-Expected status: passed
