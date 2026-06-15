@@ -42,14 +42,17 @@ The system under test (SUT) is a [RealWorld](https://github.com/gothinkster/real
 ---
 
 ## Branch strategy
+```
 main                          ← application under test only (no tests)
 └── setup/playwright         ← Playwright infrastructure, config, CI, reporting (merged)
 └── tests/e2e-suite    ← actual spec files + Page Objects  [YOU ARE HERE]
 └── dev            ← stable integration, polish, final docs
+```
 
 ---
 
 ## Project structure
+```
 realworld-playwright-demo/
 ├── .github/workflows/
 │   ├── e2e.yml                    # PR pipeline — Chromium by default, browser selectable on manual trigger
@@ -87,6 +90,7 @@ realworld-playwright-demo/
 ├── CLAUDE.md                      # This file
 ├── README.md
 allure-history/                    # Per-browser history files (gitignored, generated locally)
+```
 
 ---
 
@@ -207,8 +211,10 @@ New variables must be added to: `.env.example` + `tests/helpers/env.ts` + GitHub
 - Workers: 2 in CI (up from 1 — GitHub runners handle 2 workers stably for this suite size)
 - Manual trigger: `grep` input for tag filtering + `environment` input for target env + `project` input for browser selection (chromium/firefox/mobile-chrome/mobile-safari)
 - Artifacts: Playwright report, Allure report (always), traces/screenshots/videos (on failure)
-- Allure `executor.json` and `environment.properties` generated per run — populates EXECUTORS (CI run link, build number, browser) and ENVIRONMENT (Base URL, branch, commit, target env) sections in Allure report
-- After tests: calls `pages.yml` reusable workflow to publish report to `/{browser}/runs/{run-number}/`
+- `setup` job runs first — generates a UTC timestamp (`YYYYMMDD_HHMMSS`) once and exposes it via `outputs.run-id`. Both `e2e` and `publish` jobs consume it via `needs.setup.outputs.run-id`, guaranteeing the same report path in `executor.json` and on gh-pages.
+- Allure `executor.json` and `environment.properties` generated per run — populates EXECUTORS (`buildOrder: github.run_id` for cross-workflow trend sorting, CI run link, browser) and ENVIRONMENT (Base URL, branch, commit, Run ID) sections in Allure report
+- After tests: calls `pages.yml` reusable workflow to publish report to `/{browser}/runs/{YYYYMMDD_HHMMSS}/`
+- Publish job guarded by `if: github.run_attempt == 1` — re-runs skip deploy to avoid duplicate timestamp folders for the same logical CI execution
 
 ### Nightly Regression (`nightly.yml`)
 
@@ -217,19 +223,23 @@ New variables must be added to: `.env.example` + `tests/helpers/env.ts` + GitHub
 - Gates: `type:check` → `lint` → Playwright tests (same as PR pipeline)
 - Manual trigger: `grep` input + `environment` input (no browser selection — use e2e.yml for targeted single-browser runs)
 - Per-browser artifacts: Playwright report, Allure report, traces on failure
+- `setup` job runs first — generates a single UTC timestamp shared by all 4 matrix jobs. Critical for the matrix: without a shared ID, parallel jobs would compute different timestamps and produce mismatched report folders for the same nightly run.
 - Allure `executor.json` and `environment.properties` generated per run — same as PR pipeline but with browser name from matrix
-- After tests: each matrix job calls `pages.yml` with its own browser — 4 separate report URLs per nightly run
+- After tests: each matrix job calls `pages.yml` with its own browser — 4 separate report URLs per nightly run, all sharing the same timestamp
+- Publish jobs guarded by `if: github.run_attempt == 1` — re-runs don't create duplicate timestamp folders
 - Publish jobs run sequentially via `max-parallel: 1` — prevents git push conflicts on gh-pages
 
 ### Allure Report — GitHub Pages (`pages.yml`)
 
 - Reusable workflow (`workflow_call`) — called by `e2e.yml` and each `nightly.yml` matrix job
-- Each run published to its own URL: `/{browser}/runs/{run-number}/`
+- Each run published to its own URL: `/{browser}/runs/{YYYYMMDD_HHMMSS}/`
+- `run-id` input (UTC timestamp, format `YYYYMMDD_HHMMSS`) replaces the old `run-number` input. Root cause of the migration: `e2e.yml` and `nightly.yml` have independent `github.run_number` counters but share the same gh-pages namespace. When the nightly's run_number fell below existing runs in gh-pages (accumulated from e2e.yml's higher-frequency Chromium runs), retention treated the freshly-deployed report as "oldest" and deleted it immediately. UTC timestamp is always monotonically increasing and unique regardless of which workflow deployed it.
 - History preserved per browser/device: `/{browser}/allure-history.jsonl` on gh-pages
+- `buildOrder` in `executor.json` uses `github.run_id` — globally unique 10-digit ID, monotonically increasing across all workflows — ensures Allure's trend chart correctly sorts runs from both `e2e.yml` and `nightly.yml` into a single chronological timeline
 - Deploy uses custom git commands instead of `peaceiris/actions-gh-pages` — required for correct retention: `peaceiris` with `keep_files: true` preserved deleted runs on gh-pages because it never actually removes files; `git rm` correctly removes them from git history
-- Retention policy — keeps last 20 runs per browser, older runs deleted via `git rm`
+- Retention policy — keeps last 20 runs per browser, older runs deleted via `git rm`. Regex `^[0-9]{8}_[0-9]{6}$` matches only timestamp-format folders — explicitly excludes any legacy numeric folders or unexpected files from the count and from deletion
+- `index.json` contains quoted timestamp strings `["20260615_020031", ...]` sorted oldest-first; `index.html` reverses for display and formats each timestamp as a human-readable UTC date (`2026-06-15 02:00 UTC`)
 - Push conflict handling — retry with `git pull --rebase` (up to 3 attempts) for concurrent e2e + nightly runs
-- `max-parallel: 1` in nightly publish matrix — primary conflict prevention for nightly's 4 parallel browsers
 - `index.html` auto-generated with navigation across all browsers and runs
 - Summary link in each pipeline job points to the specific run's report URL
 
@@ -324,7 +334,7 @@ Done. Both `e2e.yml` and `nightly.yml` updated with:
 Done. Auto-publishes Allure HTML report to `gh-pages` branch after every `e2e.yml` run.
 Live report: https://chamleck.github.io/realworld-playwright-demo
 
-- `pages.yml` workflow: triggers on `E2E Tests` completion, downloads `allure-results` artifact, restores `allure-history` from `gh-pages`, generates report with trend data, deploys via `peaceiris/actions-gh-pages`
+- `pages.yml` workflow: triggers on `E2E Tests` completion, downloads `allure-results` artifact, restores `allure-history` from `gh-pages`, generates report with trend data, deploys via custom git commands (`git rm` + `git push` with retry)
 - `tests/allure-config/categories.json` — classifies FK constraint bug as "Known bugs" category in Allure report; copied into `allure-results/` before report generation
 - `allure-results/` uploaded as artifact in `e2e.yml` and `nightly.yml` for Pages workflow
 - `$GITHUB_STEP_SUMMARY` in both workflows — adds clickable link to live report in each pipeline run's Summary tab
@@ -368,13 +378,18 @@ Done. Replaced `allure-commandline@2.x` with `allure@3.x` (new TypeScript-based 
 Done. Each CI run now has its own Allure report URL on GitHub Pages.
 
 - `pages.yml` rewritten as reusable workflow (`workflow_call`) — called directly from `e2e.yml` and each `nightly.yml` matrix job
-- Per-browser/device report URLs: `/{browser}/runs/{run-number}/`
+- Per-browser/device report URLs: `/{browser}/runs/{YYYYMMDD_HHMMSS}/`
+- Report identifier switched from `github.run_number` to a UTC timestamp (`YYYYMMDD_HHMMSS`). Root cause: `e2e.yml` (PR pipeline, Chromium-heavy) and `nightly.yml` (cross-browser) share the same `gh-pages` namespace but maintain independent `github.run_number` counters. When the nightly's run_number fell below existing runs in gh-pages (accumulated from e2e.yml's more frequent Chromium deployments), retention sorted by `run_number` and deleted the freshly-deployed nightly report as "oldest". UTC timestamp is always monotonically increasing regardless of which workflow deployed it — the desync is structurally impossible.
+- `setup` job added to both workflows — generates the timestamp exactly once per run and propagates it to all downstream jobs via `outputs.run-id`. Mandatory for the nightly matrix: without a shared ID, the 4 parallel browser jobs would each compute a different timestamp and produce mismatched report folders.
+- `buildOrder` in `executor.json` uses `github.run_id` — a globally unique, monotonically increasing 10-digit ID shared across all workflows. Ensures Allure's trend chart correctly orders runs from both `e2e.yml` and `nightly.yml` into a single chronological timeline (using `run_number` would interleave the two workflows' sequences unpredictably).
+- `if: github.run_attempt == 1` guard on all publish jobs — re-runs skip deploy to avoid creating a duplicate timestamp folder for the same logical CI execution
 - History grouped per browser/device — `ALLURE_BROWSER` env var set to `matrix.project`
 - `allurerc.json` → `allurerc.mjs` — dynamic JS config reads `ALLURE_BROWSER` to set `historyPath`
-- `allure-history/` folder replaces single `allure-history.jsonl` — one JSONL file per browser/device
-- Retention policy: last 20 runs per browser kept, older runs auto-deleted
+- History tracked in a single JSONL file per browser/device: `{browser}/allure-history.jsonl` on gh-pages. Locally `allure-history/` folder is used as staging area (one `.jsonl` per browser, gitignored) — do not confuse with the gh-pages structure where each browser directory directly contains its own `allure-history.jsonl`
+- Retention policy: last 20 runs per browser kept; regex `^[0-9]{8}_[0-9]{6}$` matches only timestamp-format folders — lexicographic sort gives chronological order
+- `index.json` contains quoted timestamp strings `["20260615_020031", ...]`; `index.html` formats them as human-readable UTC dates (`2026-06-15 02:00 UTC`) for immediate readability in Slack/Jira links
 - `index.html` auto-generated — navigation page listing all browsers and their runs
-- `concurrency: gh-pages-publish, cancel-in-progress: false` — serializes parallel nightly publish jobs to prevent git conflicts
+- Push conflict handling: nightly's 4 parallel publish jobs serialized via `max-parallel: 1` on the publish matrix; if e2e and nightly publish jobs overlap, conflict is resolved by `git pull --rebase` retry loop (up to 3 attempts) in `pages.yml`
 - `cross-env` added — enables `ALLURE_BROWSER` in npm scripts on Windows/CMD
 - New npm scripts: `test:with-report:chromium/firefox/mobile-chrome/mobile-safari`
 - `executor.json` `reportUrl` updated to point to specific run URL
@@ -382,6 +397,12 @@ Done. Each CI run now has its own Allure report URL on GitHub Pages.
 ---
 
 ## Known quirks / lessons learned
+
+### gh-pages branch must not have a .gitignore (Critical deploy gotcha)
+
+During a manual cleanup of the `gh-pages` branch, a `.gitignore` file was committed to the branch containing the pattern `test-results/`. Git's `.gitignore` pattern matching is not anchored to the root by default — a bare `test-results/` matches **any** directory with that name anywhere in the tree, including `chromium/runs/20260615_094500/data/test-results/` inside a deployed Allure report. The result: `git add -A` silently excluded all per-test result JSON files, the report deployed without `data/test-results/`, and every test detail page returned 404.
+
+**Fix applied**: the `.gitignore` was removed from `gh-pages` entirely via `git rm .gitignore`. The `pages.yml` deploy script uses explicit `git add` targeting only the report directory — it does not rely on `.gitignore` for exclusions and never runs `git add -A` from the workspace root. Do not add a `.gitignore` to the `gh-pages` branch.
 
 ### `.article-preview` is overloaded by `ArticleListTabs.tsx`
 
