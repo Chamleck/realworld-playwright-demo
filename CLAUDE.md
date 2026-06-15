@@ -211,10 +211,11 @@ New variables must be added to: `.env.example` + `tests/helpers/env.ts` + GitHub
 - Workers: 2 in CI (up from 1 — GitHub runners handle 2 workers stably for this suite size)
 - Manual trigger: `grep` input for tag filtering + `environment` input for target env + `project` input for browser selection (chromium/firefox/mobile-chrome/mobile-safari)
 - Artifacts: Playwright report, Allure report (always), traces/screenshots/videos (on failure)
+- Playwright browser binaries cached via `actions/cache@v4` — key `playwright-{os}-{project}-{package-lock-hash}` gives each browser its own cache entry; invalidates automatically on Playwright version upgrade. Saves 1–3 min per run after first execution.
 - `setup` job runs first — generates a UTC timestamp (`YYYYMMDD_HHMMSS`) once and exposes it via `outputs.run-id`. Both `e2e` and `publish` jobs consume it via `needs.setup.outputs.run-id`, guaranteeing the same report path in `executor.json` and on gh-pages.
 - Allure `executor.json` and `environment.properties` generated per run — populates EXECUTORS (`buildOrder: github.run_id` for cross-workflow trend sorting, CI run link, browser) and ENVIRONMENT (Base URL, branch, commit, Run ID) sections in Allure report
 - After tests: calls `pages.yml` reusable workflow to publish report to `/{browser}/runs/{YYYYMMDD_HHMMSS}/`
-- Publish job guarded by `if: github.run_attempt == 1` — re-runs skip deploy to avoid duplicate timestamp folders for the same logical CI execution
+- Publish job guarded by `if: github.run_attempt == 1` — re-runs skip deploy to avoid duplicate timestamp folders for the same logical CI execution. **Tradeoff**: if a run fails due to an infrastructure flake (network blip, runner timeout) and an engineer re-runs it successfully, the updated green report will not be deployed — the Pages index will permanently show the red first-attempt report for that timestamp. This is a conscious architectural choice: clean, append-only report history is prioritized over reflecting re-run outcomes. The assumption is that infrastructure flakes are rare and the history integrity benefit outweighs the occasional stale status on the index page.
 
 ### Nightly Regression (`nightly.yml`)
 
@@ -223,10 +224,11 @@ New variables must be added to: `.env.example` + `tests/helpers/env.ts` + GitHub
 - Gates: `type:check` → `lint` → Playwright tests (same as PR pipeline)
 - Manual trigger: `grep` input + `environment` input (no browser selection — use e2e.yml for targeted single-browser runs)
 - Per-browser artifacts: Playwright report, Allure report, traces on failure
+- Playwright browser binaries cached per matrix project — key `playwright-{os}-{matrix.project}-{package-lock-hash}`. Each of the 4 browser jobs has its own cache entry; no cross-contamination between engines.
 - `setup` job runs first — generates a single UTC timestamp shared by all 4 matrix jobs. Critical for the matrix: without a shared ID, parallel jobs would compute different timestamps and produce mismatched report folders for the same nightly run.
 - Allure `executor.json` and `environment.properties` generated per run — same as PR pipeline but with browser name from matrix
 - After tests: each matrix job calls `pages.yml` with its own browser — 4 separate report URLs per nightly run, all sharing the same timestamp
-- Publish jobs guarded by `if: github.run_attempt == 1` — re-runs don't create duplicate timestamp folders
+- Publish jobs guarded by `if: github.run_attempt == 1` — re-runs don't create duplicate timestamp folders. Same tradeoff as in `e2e.yml`: a successful re-run after an infrastructure flake won't update the Pages report for that run.
 - Publish jobs run sequentially via `max-parallel: 1` — prevents git push conflicts on gh-pages
 
 ### Allure Report — GitHub Pages (`pages.yml`)
@@ -382,7 +384,7 @@ Done. Each CI run now has its own Allure report URL on GitHub Pages.
 - Report identifier switched from `github.run_number` to a UTC timestamp (`YYYYMMDD_HHMMSS`). Root cause: `e2e.yml` (PR pipeline, Chromium-heavy) and `nightly.yml` (cross-browser) share the same `gh-pages` namespace but maintain independent `github.run_number` counters. When the nightly's run_number fell below existing runs in gh-pages (accumulated from e2e.yml's more frequent Chromium deployments), retention sorted by `run_number` and deleted the freshly-deployed nightly report as "oldest". UTC timestamp is always monotonically increasing regardless of which workflow deployed it — the desync is structurally impossible.
 - `setup` job added to both workflows — generates the timestamp exactly once per run and propagates it to all downstream jobs via `outputs.run-id`. Mandatory for the nightly matrix: without a shared ID, the 4 parallel browser jobs would each compute a different timestamp and produce mismatched report folders.
 - `buildOrder` in `executor.json` uses `github.run_id` — a globally unique, monotonically increasing 10-digit ID shared across all workflows. Ensures Allure's trend chart correctly orders runs from both `e2e.yml` and `nightly.yml` into a single chronological timeline (using `run_number` would interleave the two workflows' sequences unpredictably).
-- `if: github.run_attempt == 1` guard on all publish jobs — re-runs skip deploy to avoid creating a duplicate timestamp folder for the same logical CI execution
+- `if: github.run_attempt == 1` guard on all publish jobs — re-runs skip deploy to avoid creating a duplicate timestamp folder for the same logical CI execution. **Tradeoff**: if a nightly run fails due to an infrastructure flake and a re-run succeeds, the green result won't be deployed — the Pages index permanently shows the red first-attempt report for that timestamp. Conscious choice: append-only history integrity over re-run result reflection. Alternative would be deploying to a subfolder like `{timestamp}_attempt{N}` but that complicates the index UI and retention logic disproportionately for an edge case.
 - History grouped per browser/device — `ALLURE_BROWSER` env var set to `matrix.project`
 - `allurerc.json` → `allurerc.mjs` — dynamic JS config reads `ALLURE_BROWSER` to set `historyPath`
 - History tracked in a single JSONL file per browser/device: `{browser}/allure-history.jsonl` on gh-pages. Locally `allure-history/` folder is used as staging area (one `.jsonl` per browser, gitignored) — do not confuse with the gh-pages structure where each browser directory directly contains its own `allure-history.jsonl`
@@ -457,7 +459,7 @@ Nightly jobs for Firefox and mobile-safari also run with `--workers=1` to reduce
 
 ### WebKit installation time in CI
 
-Installing WebKit via `npx playwright install --with-deps webkit` on GitHub Actions `ubuntu-latest` takes 10-15 minutes — significantly longer than Chromium (~1 min) or Firefox (~2 min). This is expected: WebKit requires ~180 system-level dependencies on Linux. The nightly `mobile-safari` job has a 30-minute timeout to accommodate this. This is the cost of testing against a real WebKit engine rather than a user-agent simulation — unlike Cypress which cannot run real Safari tests at all.
+Installing WebKit via `npx playwright install --with-deps webkit` on GitHub Actions `ubuntu-latest` takes up to 5 minutes on first run — longer than Chromium (~1 min) or Firefox (~2 min) due to ~180 system-level dependencies on Linux. The nightly `mobile-safari` job has a 30-minute timeout to accommodate this. From the second run onwards, browser binaries are restored from cache and installation is near-instant — only system dependencies (apt packages) are re-installed each time. This is the cost of testing against a real WebKit engine rather than a user-agent simulation — unlike Cypress which cannot run real Safari tests at all.
 
 ---
 

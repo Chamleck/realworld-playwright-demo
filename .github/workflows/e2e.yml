@@ -136,6 +136,16 @@ jobs:
       - name: Lint
         run: npm run lint:tests
 
+      # Cache Playwright browser binaries — key tied to package-lock.json so the
+      # cache invalidates automatically on Playwright version upgrades.
+      # No restore-keys: a stale binary cache is useless and wastes restore time.
+      # System dependencies (--with-deps) are not cached — apt is fast enough.
+      - name: Cache Playwright browsers
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-${{ runner.os }}-${{ github.event.inputs.project || 'chromium' }}-${{ hashFiles('package-lock.json') }}
+
       # Install only the browser needed for this run.
       # mobile-chrome uses Chromium engine, mobile-safari uses WebKit.
       - name: Install Playwright browser
