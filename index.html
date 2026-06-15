@@ -8,10 +8,11 @@
     body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; max-width: 900px; margin: 40px auto; padding: 0 20px; color: #333; }
     h1 { color: #1a1a2e; border-bottom: 2px solid #e8e8e8; padding-bottom: 10px; }
     h2 { color: #16213e; margin-top: 30px; }
-    .runs { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 10px; margin-top: 10px; }
+    .runs { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 10px; margin-top: 10px; }
     .run { background: #f8f9fa; border: 1px solid #e8e8e8; border-radius: 6px; padding: 12px; text-decoration: none; color: #333; transition: all 0.2s; }
     .run:hover { background: #e8f4fd; border-color: #4a90d9; }
-    .run-number { font-weight: bold; font-size: 1.1em; }
+    .run-label { font-weight: 600; font-size: 0.95em; font-variant-numeric: tabular-nums; }
+    .run-meta { font-size: 0.8em; color: #777; margin-top: 4px; }
   </style>
 </head>
 <body>
@@ -26,6 +27,16 @@
       'mobile-chrome': '📱 Mobile Chrome (Pixel 7)',
       'mobile-safari': '🍎 Mobile Safari (iPhone 13)'
     };
+
+    // run-id format: YYYYMMDD_HHMMSS (UTC).
+    // Renders as "YYYY-MM-DD HH:MM UTC" for readability — seconds omitted
+    // since they rarely matter to a human scanning the list.
+    function formatRunId(runId) {
+      const m = String(runId).match(/^(\d{4})(\d{2})(\d{2})_(\d{2})(\d{2})(\d{2})$/);
+      if (!m) return runId;
+      return `${m[1]}-${m[2]}-${m[3]} ${m[4]}:${m[5]} UTC`;
+    }
+
     document.addEventListener('DOMContentLoaded', async () => {
       const main = document.querySelector('body');
       for (const browser of browsers) {
@@ -35,7 +46,7 @@
           const runs = await res.json();
           const section = document.createElement('section');
           section.innerHTML = `<h2>${labels[browser] || browser}</h2><div class="runs">${
-            runs.reverse().map(r => `<a class="run" href="${BASE}/${browser}/runs/${r}/"><span class="run-number">Run #${r}</span></a>`).join('')
+            runs.slice().reverse().map(r => `<a class="run" href="${BASE}/${browser}/runs/${r}/"><div class="run-label">${formatRunId(r)}</div><div class="run-meta">${r}</div></a>`).join('')
           }</div>`;
           main.appendChild(section);
         } catch(e) {}
