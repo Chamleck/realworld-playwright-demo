@@ -10,6 +10,13 @@
 # would miss: WebKit rendering differences, Firefox event handling quirks,
 # mobile viewport issues, touch event problems.
 #
+# Allure report identification:
+#   Reports are identified by a UTC timestamp (YYYYMMDD_HHMMSS) generated
+#   exactly once in the `setup` job and propagated to all matrix jobs and the
+#   publish stage via `needs.setup.outputs.run-id`. This is essential for the
+#   matrix: without a shared identifier, each parallel job would compute its
+#   own timestamp, producing four mismatched folders for the same nightly run.
+#
 # Multi-environment support via prefixed secrets — same approach as e2e.yml.
 # See e2e.yml for full explanation of the multi-env architecture.
 
@@ -36,8 +43,25 @@ on:
           - production
 
 jobs:
+  # Generate a single shared run identifier for this nightly execution.
+  # All 4 matrix jobs (chromium/firefox/mobile-chrome/mobile-safari) and all
+  # 4 publish jobs read it via `needs.setup.outputs.run-id`. This guarantees
+  # the same folder name across browsers — without it, parallel `date` calls
+  # in each matrix job would drift by seconds and break the cross-browser
+  # navigation in the gh-pages index.
+  setup:
+    name: Setup
+    runs-on: ubuntu-latest
+    outputs:
+      run-id: ${{ steps.run-id.outputs.run-id }}
+    steps:
+      - name: Generate run ID
+        id: run-id
+        run: echo "run-id=$(date -u +'%Y%m%d_%H%M%S')" >> $GITHUB_OUTPUT
+
   nightly:
     name: E2E ${{ matrix.project }}
+    needs: setup
     runs-on: ubuntu-latest
     timeout-minutes: 30
 
@@ -112,20 +136,24 @@ jobs:
 
       # Create Allure executor info — populates EXECUTORS section in report.
       # Shows which CI run produced this report with a direct link to the run.
-      # reportUrl points to the specific run's report on GitHub Pages.
+      # - buildOrder uses `github.run_id` (globally unique across all workflows
+      #   and monotonically increasing) so Allure's trend chart sorts e2e.yml
+      #   and nightly.yml runs into a single coherent timeline.
+      # - reportUrl uses the shared run-id timestamp for the gh-pages path.
       - name: Create Allure executor info
         if: always()
         run: |
+          RUN_ID="${{ needs.setup.outputs.run-id }}"
           mkdir -p allure-results
           cat > allure-results/executor.json << EOF
           {
             "name": "GitHub Actions",
             "type": "github",
             "url": "https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}",
-            "buildOrder": ${{ github.run_number }},
-            "buildName": "Run #${{ github.run_number }} — ${{ matrix.project }}",
+            "buildOrder": ${{ github.run_id }},
+            "buildName": "Run ${RUN_ID} — ${{ matrix.project }}",
             "buildUrl": "https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}",
-            "reportUrl": "https://chamleck.github.io/realworld-playwright-demo/${{ matrix.project }}/runs/${{ github.run_number }}/",
+            "reportUrl": "https://chamleck.github.io/realworld-playwright-demo/${{ matrix.project }}/runs/${RUN_ID}/",
             "reportName": "Allure Report"
           }
           EOF
@@ -142,7 +170,8 @@ jobs:
           Target environment=${{ github.event.inputs.environment || 'dev' }}
           Branch=${{ github.ref_name }}
           Commit=${{ github.sha }}
-          Run number=${{ github.run_number }}
+          Run ID=${{ needs.setup.outputs.run-id }}
+          GitHub run=https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}
           EOF
 
       # Generate Allure report — ALLURE_BROWSER tells allurerc.mjs which
@@ -188,11 +217,13 @@ jobs:
   # Publish per-browser Allure reports to GitHub Pages sequentially.
   # max-parallel: 1 ensures browsers publish one at a time — prevents
   # git push conflicts on gh-pages branch.
-  # Each browser/device gets its own report URL: /{browser}/runs/{run-number}/
+  # Each browser/device gets its own report URL: /{browser}/runs/{run-id}/
+  # `github.run_attempt == 1` guards against re-runs creating duplicate
+  # folders with new timestamps for the same logical nightly execution.
   publish:
     name: Publish — ${{ matrix.project }}
-    needs: nightly
-    if: always()
+    needs: [setup, nightly]
+    if: always() && github.run_attempt == 1
     strategy:
       fail-fast: false
       max-parallel: 1
@@ -201,7 +232,7 @@ jobs:
     uses: ./.github/workflows/pages.yml
     with:
       browser: ${{ matrix.project }}
-      run-number: ${{ github.run_number }}
+      run-id: ${{ needs.setup.outputs.run-id }}
       artifact-name: allure-results-${{ matrix.project }}
     permissions:
       contents: write

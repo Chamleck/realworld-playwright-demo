@@ -7,6 +7,14 @@
 # A specific browser can be selected via workflow_dispatch for targeted debugging.
 # Full cross-browser regression runs nightly — see nightly.yml.
 #
+# Allure report identification:
+#   Reports are identified by a UTC timestamp (YYYYMMDD_HHMMSS) generated
+#   exactly once in the `setup` job and propagated to all downstream jobs
+#   via `needs.setup.outputs.run-id`. This avoids the rendering of
+#   `github.run_number`, which is workflow-scoped (e2e.yml and nightly.yml
+#   have independent counters) and therefore unsafe as a shared identifier
+#   for reports published into the same gh-pages namespace.
+#
 # Multi-environment support via prefixed secrets:
 #   GitHub Environments are paid for private repos — instead we use prefixed
 #   secrets in shared space (STAGING_JWT_SECRET, PROD_JWT_SECRET, etc.) with
@@ -55,8 +63,24 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  # Generate a single shared run identifier for this workflow run.
+  # All downstream jobs (e2e, publish) read it via `needs.setup.outputs.run-id`,
+  # guaranteeing identical paths in Allure metadata and the gh-pages folder
+  # name. Done in a dedicated job so the value survives even if `e2e` fails
+  # early — `publish` (with `if: always()`) still has access to it.
+  setup:
+    name: Setup
+    runs-on: ubuntu-latest
+    outputs:
+      run-id: ${{ steps.run-id.outputs.run-id }}
+    steps:
+      - name: Generate run ID
+        id: run-id
+        run: echo "run-id=$(date -u +'%Y%m%d_%H%M%S')" >> $GITHUB_OUTPUT
+
   e2e:
     name: E2E ${{ github.event.inputs.project || 'chromium' }}
+    needs: setup
     runs-on: ubuntu-latest
     timeout-minutes: 15
 
@@ -133,21 +157,25 @@ jobs:
 
       # Create Allure executor info — populates EXECUTORS section in report.
       # Shows which CI run produced this report with a direct link to the run.
-      # reportUrl points to the specific run's report on GitHub Pages.
+      # - buildOrder uses `github.run_id` (globally unique across all workflows
+      #   and monotonically increasing) so Allure's trend chart sorts e2e.yml
+      #   and nightly.yml runs into a single coherent timeline.
+      # - reportUrl uses the shared run-id timestamp for the gh-pages path.
       - name: Create Allure executor info
         if: always()
         run: |
           PROJECT="${{ github.event.inputs.project || 'chromium' }}"
+          RUN_ID="${{ needs.setup.outputs.run-id }}"
           mkdir -p allure-results
           cat > allure-results/executor.json << EOF
           {
             "name": "GitHub Actions",
             "type": "github",
             "url": "https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}",
-            "buildOrder": ${{ github.run_number }},
-            "buildName": "Run #${{ github.run_number }} — ${PROJECT}",
+            "buildOrder": ${{ github.run_id }},
+            "buildName": "Run ${RUN_ID} — ${PROJECT}",
             "buildUrl": "https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}",
-            "reportUrl": "https://chamleck.github.io/realworld-playwright-demo/${PROJECT}/runs/${{ github.run_number }}/",
+            "reportUrl": "https://chamleck.github.io/realworld-playwright-demo/${PROJECT}/runs/${RUN_ID}/",
             "reportName": "Allure Report"
           }
           EOF
@@ -165,7 +193,8 @@ jobs:
           Target environment=${{ github.event.inputs.environment || 'dev' }}
           Branch=${{ github.ref_name }}
           Commit=${{ github.sha }}
-          Run number=${{ github.run_number }}
+          Run ID=${{ needs.setup.outputs.run-id }}
+          GitHub run=https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}
           EOF
 
       # Generate Allure report — ALLURE_BROWSER tells allurerc.mjs which
@@ -201,17 +230,19 @@ jobs:
           retention-days: 7
 
   # Publish Allure report to GitHub Pages after tests complete.
-  # Report is published to: /{browser}/runs/{run-number}/
+  # Report is published to: /{browser}/runs/{run-id}/
   # History is preserved per browser for trend analysis.
-  # Summary link points to the specific run's report.
+  # `github.run_attempt == 1` guards against re-runs overwriting historical
+  # reports: a re-run would generate a new timestamp and create a duplicate
+  # folder for the same logical CI execution.
   publish:
     name: Publish Allure Report
-    needs: e2e
-    if: always()
+    needs: [setup, e2e]
+    if: always() && github.run_attempt == 1
     uses: ./.github/workflows/pages.yml
     with:
       browser: ${{ github.event.inputs.project || 'chromium' }}
-      run-number: ${{ github.run_number }}
+      run-id: ${{ needs.setup.outputs.run-id }}
       artifact-name: allure-results
     permissions:
       contents: write
