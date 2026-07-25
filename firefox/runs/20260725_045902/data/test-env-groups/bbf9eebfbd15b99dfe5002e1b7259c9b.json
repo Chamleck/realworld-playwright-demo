@@ -1,0 +1,1 @@
+{"id":"bbf9eebfbd15b99dfe5002e1b7259c9b","fullName":"auth.spec.ts:95:9","name":"should reject: Password too short (7 chars, min is 8)","status":"passed","testResultsByEnv":{"default":"774bd0996777886fa5ef7b5c2f8257a7"}}
