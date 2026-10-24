@@ -33,7 +33,7 @@
 
 import { test as base, expect } from '@playwright/test';
 import path from 'path';
-import { seedUser, deleteUser, deleteArticle, type SeedUserResult } from '../helpers/db';
+import { seedUser, deleteUser, deleteUserById, deleteArticle, type SeedUserResult } from '../helpers/db';
 import { loginViaAPI, createArticleViaAPI } from '../helpers/api';
 import { createArticleViaUI } from '../helpers/articles';
 import articlesData from './data/articles.json';
@@ -265,7 +265,9 @@ const dataTest = base.extend<
     try {
       await use({ ...seeded, password });
     } finally {
-      await deleteUser(seeded.email);
+      /* By id, not email: profile tests change this user's email via the UI, and a
+       * lookup by the original email would miss the row and leave it behind. */
+      await deleteUserById(seeded.id);
     }
   },
 

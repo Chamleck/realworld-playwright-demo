@@ -77,7 +77,7 @@ realworld-playwright-demo/
 │   ├── helpers/
 │   │   ├── articles.ts            # UI helpers: createArticleViaUI
 │   │   ├── api.ts                 # tRPC helpers: loginViaAPI, registerViaAPI, createArticleViaAPI
-│   │   ├── db.ts                  # Prisma helpers: seedUser, deleteUser, deleteArticle
+│   │   ├── db.ts                  # Prisma helpers: seedUser, deleteUser, deleteUserById, deleteArticle
 │   │   ├── routes.ts              # ROUTES: single source of truth for tRPC endpoint paths
 │   │   ├── expectResponse.ts      # expectResponse: arm-action-await network sync helper
 │   │   └── env.ts                 # Typed env loader with zod validation
@@ -128,7 +128,7 @@ allure-history/                    # Per-browser history files (gitignored, gene
   - `expectResponse.ts` — `expectResponse(page, route, status, action)`: arms `waitForResponse` on the route, runs the action (`Promise.all`), then asserts the status — collapses the repeated arm-action-await pattern into one call, guarantees the listener is attached before the action fires, and turns a wrong status into an immediate "expected 200, received 500" failure instead of a timeout.
 - **Fixtures** (`tests/fixtures/test-fixtures.ts`) — high-level Playwright fixtures that use helpers. Manage lifecycle (setup before test, teardown after).
   - Page Object fixtures (`loginPage`, `signUpPage`, `homePage`, `createArticlePage`, `articlePage`, `profilePage`) are defined on the `dataTest` base layer — tests receive ready-built page objects in their arguments instead of `new XPage(page)`.
-  - Data fixtures (`testUser`, `registeredUser`, `seededArticle`, `uiArticle`, `profileUpdate`) create their resource, provide it, and tear it down in `finally`. There are no manual `createdEmails`/`createdSlugs` arrays or `afterEach` cleanup hooks — the fixture's try/finally owns the lifecycle.
+  - Data fixtures (`testUser`, `registeredUser`, `seededArticle`, `uiArticle`, `profileUpdate`) create their resource, provide it, and tear it down in `finally`. There are no manual `createdEmails`/`createdSlugs` arrays or `afterEach` cleanup hooks — the fixture's try/finally owns the lifecycle. `testUser` is deleted by its immutable `id` (`deleteUserById`), not by email: the profile tests change the email through the UI, and an email lookup would miss the row and leave the user behind.
 - **Page Objects** (`tests/pages/`) — one class per page, receives `page: Page` via constructor. All inherit from `BasePage`. All action methods wrapped in `test.step()` for granular Allure step hierarchy. Locators/methods that no spec exercises are not kept "just in case" — dead members were removed; add them back with the test that needs them.
 - **Specs** (`tests/e2e/`) — test files that import a test flavour and declare the fixtures they need.
   - `auth.spec.ts` → `guestTest` (logged-out page).

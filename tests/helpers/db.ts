@@ -86,8 +86,9 @@ export async function seedUser(input: SeedUserInput): Promise<SeedUserResult> {
  * Deletes in the correct order to respect foreign key constraints:
  * comments → articles → user.
  *
- * Use case: afterEach / afterAll cleanup so tests don't leave
- * stale data that could affect other tests running in parallel.
+ * Use case: fixture teardown / globalTeardown, when only the email is known up front
+ * (e.g. a user registered through the UI). If the test may CHANGE the email, delete by
+ * id instead — see deleteUserById.
  */
 export async function deleteUser(email: string): Promise<void> {
   const user = await prisma.user.findUnique({
@@ -97,19 +98,42 @@ export async function deleteUser(email: string): Promise<void> {
 
   if (!user) return;
 
+  await deleteUserById(user.id);
+}
+
+/**
+ * Delete a user by primary key, with the same cascade as deleteUser.
+ *
+ * Why a separate id-based variant:
+ * email (and username) are editable through the Settings page, the id is not. The
+ * profile-update test changes the seeded user's email; a teardown that looks the user
+ * up by the ORIGINAL email then finds nothing, returns early and silently leaves the
+ * updated user in the database. Fixtures that seed a user and hand it to a test that
+ * may edit it must clean up by the immutable id.
+ *
+ * Idempotent: a missing user is a no-op, so teardown never fails on already-deleted data.
+ */
+export async function deleteUserById(id: string): Promise<void> {
+  const user = await prisma.user.findUnique({
+    where: { id },
+    select: { id: true },
+  });
+
+  if (!user) return;
+
   /* Delete comments by this user */
   await prisma.comment.deleteMany({
-    where: { authorId: user.id },
+    where: { authorId: id },
   });
 
   /* Delete articles by this user (also removes article-tag relations) */
   await prisma.article.deleteMany({
-    where: { authorId: user.id },
+    where: { authorId: id },
   });
 
   /* Finally delete the user */
   await prisma.user.delete({
-    where: { email },
+    where: { id },
   });
 }
 

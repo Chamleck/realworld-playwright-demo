@@ -113,7 +113,7 @@ Specs (tests/e2e/*.spec.ts)
         └── typed JSON templates for users, articles, comments
 
 Fixtures call Helpers (tests/helpers/)
-  ├── db.ts             — Prisma: seedUser, deleteUser, deleteArticle
+  ├── db.ts             — Prisma: seedUser, deleteUser, deleteUserById, deleteArticle
   ├── api.ts            — tRPC: loginViaAPI, registerViaAPI, createArticleViaAPI
   ├── articles.ts       — UI: createArticleViaUI (used only in UI creation flow test)
   ├── routes.ts         — ROUTES: single source of truth for tRPC endpoint paths
