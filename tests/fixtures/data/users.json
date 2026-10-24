@@ -4,18 +4,6 @@
     "username": "Jake",
     "password": "jakejake"
   },
-  "validUsers": [
-    {
-      "email": "test@mail.com",
-      "username": "Test",
-      "password": "11111111"
-    },
-    {
-      "email": "myuser@mail.com",
-      "username": "Myuser",
-      "password": "11111111"
-    }
-  ],
   "invalidUsers": [
     {
       "description": "Password too short (7 chars, min is 8)",
@@ -41,5 +29,11 @@
       "username": "",
       "password": "ValidPass123"
     }
-  ]
+  ],
+  "emailAndPasswordInvalid": {
+    "description": "Invalid email and short password combined",
+    "email": "bademail",
+    "username": "BadBothUser",
+    "password": "V3123"
+  }
 }

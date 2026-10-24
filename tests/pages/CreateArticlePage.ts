@@ -7,6 +7,7 @@
 
 import { type Page, type Locator, test } from '@playwright/test';
 import { BasePage } from './BasePage';
+import { PAGES } from '../helpers/routes';
 
 export class CreateArticlePage extends BasePage {
   readonly titleInput: Locator;
@@ -26,7 +27,7 @@ export class CreateArticlePage extends BasePage {
 
   async goto() {
     await test.step('Navigate to editor', async () => {
-      await super.goto('/editor');
+      await super.goto(PAGES.newArticle);
     });
   }
 

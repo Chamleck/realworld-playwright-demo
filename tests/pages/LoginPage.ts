@@ -7,6 +7,7 @@
 
 import { type Page, type Locator, test } from '@playwright/test';
 import { BasePage } from './BasePage';
+import { PAGES } from '../helpers/routes';
 
 export class LoginPage extends BasePage {
   readonly emailInput: Locator;
@@ -24,7 +25,7 @@ export class LoginPage extends BasePage {
 
   async goto() {
     await test.step('Navigate to login page', async () => {
-      await super.goto('/login');
+      await super.goto(PAGES.login);
     });
   }
 

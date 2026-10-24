@@ -7,6 +7,7 @@
 
 import { type Page, type Locator, test } from '@playwright/test';
 import { BasePage } from './BasePage';
+import { PAGES } from '../helpers/routes';
 
 export class SignUpPage extends BasePage {
   readonly usernameInput: Locator;
@@ -26,7 +27,7 @@ export class SignUpPage extends BasePage {
 
   async goto() {
     await test.step('Navigate to register page', async () => {
-      await super.goto('/register');
+      await super.goto(PAGES.register);
     });
   }
 

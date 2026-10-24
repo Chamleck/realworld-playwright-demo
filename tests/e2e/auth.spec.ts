@@ -2,83 +2,62 @@
  * Auth E2E Tests — Registration, Login, Validation, Logout
  *
  * Data strategies:
- *   Registration: user does NOT exist → created via UI → cleanup via afterEach
+ *   Registration: user does NOT exist → created via UI → cleanup via registeredUser fixture
  *   Login: uses GLOBAL_TEST_USER (created by globalSetup, already in DB)
  *   Validation: invalid data → no user created → no cleanup
  *   Navigation: no data interaction
  *
+ * Uses guestTest — the page starts logged out (no storageState), which is what
+ * registration/login/navigation tests need. guestTest still provides the Page Object
+ * and data fixtures (loginPage, signUpPage, registeredUser, ...) so tests declare the
+ * pages they need in their arguments instead of constructing them by hand.
+ *
+ * Synchronization: no network waits. Every outcome asserted here is rendered only
+ * after the server answered — the redirect home + username in the navbar after a
+ * successful register/login, the error list after a rejected one — so web-first
+ * assertions on the UI are both sufficient and decoupled from internal tRPC names.
+ *
  * Tags: @auth, @smoke
  */
 
-import { test, expect } from '@playwright/test';
-import { LoginPage, SignUpPage, HomePage, ProfilePage } from '../pages';
+import { guestTest as test, expect } from '../fixtures/test-fixtures';
 import { GLOBAL_TEST_USER } from '../../globalSetup';
 import usersData from '../fixtures/data/users.json';
-import { deleteUser } from '../helpers/db';
+import { PAGES } from '../helpers/routes';
 
 /* ================================================================== */
 /*  Registration tests                                                 */
 /* ================================================================== */
 
 test.describe('Registration @auth', () => {
-  /**
-   * Track emails of users created during tests.
-   * afterEach will delete them — even if the test fails.
+  /*
+   * The registeredUser fixture supplies unique, parallel-safe credentials and
+   * deletes the user afterwards in its own `finally` — no manual createdEmails
+   * array or afterEach hook needed. The test only performs the UI registration
+   * (the behaviour under test) using those credentials.
    */
-  const createdEmails: string[] = [];
 
-  test.afterEach(async () => {
-    for (const email of createdEmails) {
-      await deleteUser(email);
-    }
-    createdEmails.length = 0;
-  });
-
-  test('should register a new user with valid data', async ({ page }) => {
-
-    const signUpPage = new SignUpPage(page);
-    const homePage = new HomePage(page);
-
-    const user = usersData.validUsers[0]!;
-    createdEmails.push(user.email);
+  test('should register a new user with valid data', async ({ signUpPage, homePage, registeredUser }) => {
 
     await signUpPage.goto();
 
-    const responsePromise = page.waitForResponse(
-      (resp) => resp.url().includes('/api/trpc/auth.register') && resp.status() === 200
-    );
+    await signUpPage.register(registeredUser.username, registeredUser.email, registeredUser.password);
 
-    await signUpPage.register(user.username, user.email, user.password);
-    await responsePromise;
-
-    await homePage.waitForURL('/');
-    await expect(homePage.getNavProfile(user.username)).toBeVisible();
+    await homePage.waitForURL(PAGES.home);
+    await expect(homePage.getNavProfile(registeredUser.username)).toBeVisible();
   });
 
-  test('should register and then logout successfully', async ({ page }) => {
-
-    const signUpPage = new SignUpPage(page);
-    const homePage = new HomePage(page);
-    const profilePage = new ProfilePage(page);
-
-    const user = usersData.validUsers[1]!;
-    createdEmails.push(user.email);
+  test('should register and then logout successfully', async ({ signUpPage, homePage, settingsPage, registeredUser }) => {
 
     await signUpPage.goto();
 
-    const responsePromise = page.waitForResponse(
-      (resp) => resp.url().includes('/api/trpc/auth.register') && resp.status() === 200
-    );
+    await signUpPage.register(registeredUser.username, registeredUser.email, registeredUser.password);
 
-    await signUpPage.register(user.username, user.email, user.password);
-    await responsePromise;
+    await homePage.waitForURL(PAGES.home);
+    await expect(homePage.getNavProfile(registeredUser.username)).toBeVisible();
 
-    await homePage.waitForURL('/');
-    await expect(homePage.getNavProfile(user.username)).toBeVisible();
-
-    await profilePage.gotoSettings();
-    await profilePage.waitForURL('/settings');
-    await profilePage.logout();
+    await settingsPage.goto();
+    await settingsPage.logout();
 
     await expect(homePage.navSignIn).toBeVisible();
   });
@@ -92,23 +71,11 @@ test.describe('Registration validation @auth', () => {
 
   for (const invalidUser of usersData.invalidUsers) {
 
-    test(`should reject: ${invalidUser.description}`, async ({ page }) => {
-
-      const signUpPage = new SignUpPage(page);
+    test(`should reject: ${invalidUser.description}`, async ({ signUpPage }) => {
 
       await signUpPage.goto();
 
-      const responsePromise = page.waitForResponse(
-        (resp) => resp.url().includes('/api/trpc/auth.register') && resp.status() === 400
-      );
-
-      await signUpPage.register(
-        invalidUser.username,
-        invalidUser.email,
-        invalidUser.password
-      );
-
-      await responsePromise;
+      await signUpPage.register(invalidUser.username, invalidUser.email, invalidUser.password);
 
       await expect(signUpPage.errorMessages.first()).toBeVisible();
     });
@@ -120,68 +87,44 @@ test.describe('Registration validation @auth', () => {
 /* ================================================================== */
 
 test.describe('Login @auth', () => {
-  /**
+  /*
    * Login tests use GLOBAL_TEST_USER — the user created by globalSetup.
    * No need for testUser fixture or manual cleanup.
    * The user exists in DB for the entire test run.
    */
 
-  test('should login with valid credentials @smoke', async ({ page }) => {
-
-    const loginPage = new LoginPage(page);
-    const homePage = new HomePage(page);
+  test('should login with valid credentials @smoke', async ({ loginPage, homePage }) => {
 
     await loginPage.goto();
 
-    const responsePromise = page.waitForResponse(
-      (resp) => resp.url().includes('/api/trpc/auth.login') && resp.status() === 200
-    );
-
     await loginPage.login(GLOBAL_TEST_USER.email, GLOBAL_TEST_USER.password);
-    await responsePromise;
 
-    await homePage.waitForURL('/');
+    await homePage.waitForURL(PAGES.home);
     await expect(homePage.getNavProfile(GLOBAL_TEST_USER.username)).toBeVisible();
   });
 
-  test('should login and logout successfully', async ({ page }) => {
-
-    const loginPage = new LoginPage(page);
-    const homePage = new HomePage(page);
-    const profilePage = new ProfilePage(page);
+  test('should login and logout successfully', async ({ loginPage, homePage, settingsPage }) => {
 
     await loginPage.goto();
 
-    const responsePromise = page.waitForResponse(
-      (resp) => resp.url().includes('/api/trpc/auth.login') && resp.status() === 200
-    );
-
     await loginPage.login(GLOBAL_TEST_USER.email, GLOBAL_TEST_USER.password);
-    await responsePromise;
 
-    await homePage.waitForURL('/');
+    await homePage.waitForURL(PAGES.home);
     await expect(homePage.getNavProfile(GLOBAL_TEST_USER.username)).toBeVisible();
 
-    await profilePage.gotoSettings();
-    await profilePage.logout();
+    await settingsPage.goto();
+    await settingsPage.logout();
 
     await expect(homePage.navSignIn).toBeVisible();
   });
 
-  test('should reject login with invalid credentials', async ({ page }) => {
+  test('should reject login with invalid credentials', async ({ loginPage }) => {
 
-    const invalidUser = usersData.invalidUsers[2]!;
-
-    const loginPage = new LoginPage(page);
+    const invalidUser = usersData.emailAndPasswordInvalid;
 
     await loginPage.goto();
 
-    const responsePromise = page.waitForResponse(
-      (resp) => resp.url().includes('/api/trpc/auth.login') && resp.status() === 400
-    );
-
     await loginPage.login(invalidUser.email, invalidUser.password);
-    await responsePromise;
 
     await expect(loginPage.errorMessages.filter({ hasText: 'Invalid email' })).toBeVisible();
     await expect(loginPage.errorMessages.filter({ hasText: 'at least 8 character' })).toBeVisible();
@@ -193,25 +136,21 @@ test.describe('Login @auth', () => {
 /* ================================================================== */
 
 test.describe('Auth navigation @auth', () => {
-  test('should navigate from register to login', async ({ page }) => {
-
-    const signUpPage = new SignUpPage(page);
+  test('should navigate from register to login', async ({ signUpPage }) => {
 
     await signUpPage.goto();
 
     await expect(signUpPage.loginLink).toBeVisible();
     await signUpPage.loginLink.click();
-    await signUpPage.waitForURL('/login');
+    await signUpPage.waitForURL(PAGES.login);
   });
 
-  test('should navigate from login to register', async ({ page }) => {
+  test('should navigate from login to register', async ({ loginPage }) => {
 
-    const loginPage = new LoginPage(page);
-    
     await loginPage.goto();
 
     await expect(loginPage.registerLink).toBeVisible();
     await loginPage.registerLink.click();
-    await loginPage.waitForURL('/register');
+    await loginPage.waitForURL(PAGES.register);
   });
 });
