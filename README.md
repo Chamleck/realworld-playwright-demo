@@ -84,6 +84,10 @@ npm test
 | `npm run type:check` | TypeScript type check for test files only |
 | `npm run lint:tests` | Run ESLint on test files only |
 
+### Developer tooling (AI-assisted sessions)
+
+`scripts/dev/` holds small `sh` / `node` helpers used when the project is worked on by an AI assistant through a terminal bridge: `sync.sh` (session-start sync that never resets or stashes), `check.sh` (type check + lint in one call), `bg.sh` (background runner for long Playwright runs), `edit.js` (exact find/replace edits that fail closed) and `deliver.sh` (commit exactly the named files, push, verify on origin). They are not needed to run the tests — see the "AI-assisted workflow" section of [CLAUDE.md](./CLAUDE.md).
+
 ## Architecture
 
 ### Test framework layers

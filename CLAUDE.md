@@ -84,6 +84,8 @@ realworld-playwright-demo/
 ├── globalTeardown.ts              # Runs after all tests: disconnect Prisma
 ├── playwright.config.ts           # 4 browser projects, webServer, reporters
 ├── allurerc.mjs                   # Allure 3 dynamic config — historyPath per browser via ALLURE_BROWSER env
+├── scripts/dev/                   # AI-session tooling: sync / check / deliver / bg / edit (see "AI-assisted workflow")
+├── .gitattributes                 # Forces LF for *.sh (core.autocrlf=true would break the scripts on Windows)
 ├── tsconfig.test.json             # TypeScript config scoped to test files only
 ├── .env.example                   # Env template (committed)
 ├── .env                           # Local env values (gitignored)
@@ -460,6 +462,37 @@ Nightly jobs for Firefox and mobile-safari also run with `--workers=1` to reduce
 ### WebKit installation time in CI
 
 Installing WebKit via `npx playwright install --with-deps webkit` on GitHub Actions `ubuntu-latest` takes up to 5 minutes on first run — longer than Chromium (~1 min) or Firefox (~2 min) due to ~180 system-level dependencies on Linux. The nightly `mobile-safari` job has a 30-minute timeout to accommodate this. From the second run onwards, browser binaries are restored from cache and installation is near-instant — only system dependencies (apt packages) are re-installed each time. This is the cost of testing against a real WebKit engine rather than a user-agent simulation — unlike Cypress which cannot run real Safari tests at all.
+
+---
+
+### `tsconfig.test.tsbuildinfo` was committed by accident
+
+`tsconfig.json` sets `incremental: true`, so every `npm run type:check` rewrites `tsconfig.test.tsbuildinfo`. The
+`.gitignore` only listed `/tsconfig.tsbuildinfo`, so the test-config build info stayed tracked and every type check
+left a modified file behind — which made the working tree look dirty to `scripts/dev/sync.sh` and `deliver.sh`.
+**Fix applied**: the file was untracked and `.gitignore` now lists `/*.tsbuildinfo` (root-anchored on purpose — see
+the gh-pages `.gitignore` quirk above for what an unanchored pattern can do).
+
+---
+
+## AI-assisted workflow (terminal bridge)
+
+Most changes on this branch are made by Claude working in the local clone through a terminal bridge. Each terminal
+call is a full LLM turn and is cut at ~60 s, so the routine steps are scripts that do the whole job in ONE call and
+print one summary line. They are plain `sh` / `node` (Git Bash on Windows, no Python required).
+
+| Script | What it does | Why it exists |
+|---|---|---|
+| `sh scripts/dev/sync.sh [<expected tip>]` | Session start: fetch, stop on tracked changes / unpushed / diverged / unexpected tip, `pull --ff-only` when only behind, `npm install` when the lockfile changed | Never start a session on a stale or dirty clone; never reset or stash anything silently |
+| `sh scripts/dev/check.sh` | `type:check` + `lint:tests` in parallel, one PASS/FAIL line each | Same static gate as `e2e.yml`, within one bridge call |
+| `sh scripts/dev/bg.sh run <log> <cmd…>` / `wait <log>` | Run a long command (Playwright, Allure) in the background; `wait` polls ≤ 50 s, exit 3 = still running | Playwright runs take minutes, the bridge cuts at ~60 s |
+| `node scripts/dev/edit.js <spec>` | Exact find/replace edits from a block spec; every find must match exactly once or nothing is written; keeps CRLF/LF | Files are never retyped from (possibly truncated) tool output |
+| `sh scripts/dev/deliver.sh [--dry-run] <msg file> <marker> <files…>` | `git add` exactly the named files (never `-A`), commit `-F`, push, then verify by content on origin | "Pushed" is proven from origin, not from recall; refuses `main` / `gh-pages` and messages without the Co-Authored-By trailer |
+
+Conventions:
+- One-session junk (edit specs, commit messages, logs) lives in `../rw-scratch` next to the clone — outside git, deleted at the end of a session.
+- Untracked files that the human keeps locally (e.g. a scratch spec) are listed by `sync.sh` but never staged.
+- Dangerous git operations (`push --force`, `reset --hard`, branch deletion, rebasing published history) are never part of these scripts and need explicit human confirmation.
 
 ---
 
