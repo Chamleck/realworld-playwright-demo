@@ -31,7 +31,7 @@
  * import { dynamicAuthedTest as test, expect } from '../fixtures/test-fixtures';
  */
 
-import { test as base, expect } from '@playwright/test';
+import { test as base, expect, type TestInfo } from '@playwright/test';
 import path from 'path';
 import { seedUser, deleteUser, deleteUserById, deleteArticle, type SeedUserResult } from '../helpers/db';
 import { loginViaAPI, createArticleViaAPI } from '../helpers/api';
@@ -45,7 +45,7 @@ import {
   HomePage,
   CreateArticlePage,
   ArticlePage,
-  ProfilePage,
+  SettingsPage,
 } from '../pages';
 
 /* Path to the storageState file created by globalSetup */
@@ -53,6 +53,19 @@ const STORAGE_STATE_PATH = path.resolve(
   __dirname,
   '../auth/.storage-state.json'
 );
+
+/*
+ * Shared test-data building blocks — one definition instead of a copy per fixture.
+ *
+ * uniqueSuffix: Date.now() alone can repeat across parallel workers started in the
+ * same millisecond; adding the worker's parallelIndex makes it unique per worker.
+ * Passwords: TEST_PASSWORD is what seeded/registered users start with; UPDATED_PASSWORD
+ * must differ from it so the "login with updated credentials" test proves the change.
+ */
+const uniqueSuffix = (testInfo: TestInfo): string =>
+  `${Date.now()}_w${testInfo.parallelIndex}`;
+const TEST_PASSWORD = 'Test1234!';
+const UPDATED_PASSWORD = '22222222';
 
 /* ------------------------------------------------------------------ */
 /* Fixture types                                                      */
@@ -106,17 +119,12 @@ interface ProfileUpdate {
 }
 
 /**
- * UiArticle — what the uiArticle fixture provides to the test.
- *
- * Unlike seededArticle (created via API), this article is created through the
- * editor UI — because the test that uses it verifies the UI creation flow itself.
- * The fixture owns cleanup: it deletes the article in `finally`, replacing the
- * previous manual createdSlugs array + afterEach in articles.spec.ts.
+ * CreateUiArticle — what the createUiArticle fixture provides: a FUNCTION, not an
+ * article. The test calls it, so the UI creation flow (the behaviour under test) runs
+ * in the test body and shows up as the test's own steps, while the fixture still owns
+ * cleanup. See the fixture for why this matters.
  */
-interface UiArticle {
-  slug: string;
-  articlePage: ArticlePage;
-}
+type CreateUiArticle = () => Promise<{ slug: string; title: string; articlePage: ArticlePage }>;
 
 /**
  * PageObjects — the set of Page Object fixtures available to every test.
@@ -128,7 +136,7 @@ interface PageObjects {
   homePage: HomePage;
   createArticlePage: CreateArticlePage;
   articlePage: ArticlePage;
-  profilePage: ProfilePage;
+  settingsPage: SettingsPage;
 }
 
 /* ------------------------------------------------------------------ */
@@ -140,7 +148,7 @@ interface PageObjects {
  *
  * Data fixtures: seededArticle, testUser, registeredUser, profileUpdate.
  * Page Object fixtures: loginPage, signUpPage, homePage, createArticlePage,
- *   articlePage, profilePage.
+ *   articlePage, settingsPage.
  *
  * guestTest, authedTest and dynamicAuthedTest inherit these via extend chaining —
  * no duplication, single source of truth for each fixture.
@@ -152,7 +160,7 @@ interface PageObjects {
 const dataTest = base.extend<
   {
     seededArticle: SeededArticle;
-    uiArticle: UiArticle;
+    createUiArticle: CreateUiArticle;
     testUser: TestUser;
     registeredUser: RegisteredUser;
     profileUpdate: ProfileUpdate;
@@ -187,8 +195,8 @@ const dataTest = base.extend<
     await use(new ArticlePage(page));
   },
 
-  profilePage: async ({ page }, use) => {
-    await use(new ProfilePage(page));
+  settingsPage: async ({ page }, use) => {
+    await use(new SettingsPage(page));
   },
 
   /* ---------------------------------------------------------------- */
@@ -203,7 +211,7 @@ const dataTest = base.extend<
    * deletes the article after — even if the test fails.
    */
   seededArticle: async ({}, use, testInfo) => {
-    const uniqueId = `${Date.now()}_w${testInfo.parallelIndex}`;
+    const uniqueId = uniqueSuffix(testInfo);
     const article = articlesData.validArticle;
 
     const auth = await loginViaAPI({
@@ -226,23 +234,39 @@ const dataTest = base.extend<
   },
 
   /**
-   * uiArticle fixture.
+   * createUiArticle fixture — factory pattern.
    *
-   * Creates an article through the editor UI (via createArticleViaUI) and provides
-   * its slug + ArticlePage to the test. Used ONLY by the test that verifies the UI
-   * creation flow — every other article precondition uses seededArticle (API-based).
+   * Used ONLY by the test that verifies the UI creation flow; every other article
+   * precondition uses seededArticle (API-based, faster).
    *
-   * The page must be authenticated for this to work, so this fixture is only used
-   * under authedTest. Cleanup (deleteArticle) runs in `finally` — this replaces the
-   * manual createdSlugs array + afterEach that previously lived in articles.spec.ts.
+   * Why a factory and not a ready-made article:
+   *   A fixture's setup runs BEFORE the test body. If the fixture itself created the
+   *   article, the very flow the test is supposed to verify would execute as setup:
+   *   a broken editor would be reported as a fixture error, and the creation steps
+   *   would sit under "Before Hooks" in Allure instead of in the test. Handing the test
+   *   a function keeps the action in the test body; the fixture only tracks what was
+   *   created and deletes it in `finally` — Playwright's documented factory pattern.
+   *
+   * Title gets the same unique suffix as seededArticle: the app derives the slug from
+   * the title with a count-based suffix, which can race when two workers create the
+   * same title at once.
+   *
+   * The page must be authenticated, so this fixture is only used under authedTest.
    */
-  uiArticle: async ({ page }, use) => {
-    const created = await createArticleViaUI(page);
+  createUiArticle: async ({ page }, use, testInfo) => {
+    const createdSlugs: string[] = [];
 
     try {
-      await use(created);
+      await use(async () => {
+        const title = `${articlesData.validArticle.title} ${uniqueSuffix(testInfo)}`;
+        const created = await createArticleViaUI(page, title);
+        createdSlugs.push(created.slug);
+        return { ...created, title };
+      });
     } finally {
-      await deleteArticle(created.slug);
+      for (const slug of createdSlugs) {
+        await deleteArticle(slug);
+      }
     }
   },
 
@@ -253,8 +277,8 @@ const dataTest = base.extend<
    * provides user data to the test, deletes the user after.
    */
   testUser: async ({}, use, testInfo) => {
-    const uniqueId = `${Date.now()}_w${testInfo.parallelIndex}`;
-    const password = 'Test1234!';
+    const uniqueId = uniqueSuffix(testInfo);
+    const password = TEST_PASSWORD;
 
     const seeded = await seedUser({
       email: `test_${uniqueId}@test.com`,
@@ -286,13 +310,13 @@ const dataTest = base.extend<
    * testUser and seededArticle already work.
    */
   registeredUser: async ({}, use, testInfo) => {
-    const uniqueId = `${Date.now()}_w${testInfo.parallelIndex}`;
+    const uniqueId = uniqueSuffix(testInfo);
     const email = `registered_${uniqueId}@test.com`;
 
     const user: RegisteredUser = {
       username: `RegUser_${uniqueId}`,
       email,
-      password: 'Test1234!',
+      password: TEST_PASSWORD,
     };
 
     try {
@@ -312,12 +336,12 @@ const dataTest = base.extend<
    * email/username collisions when tests run in parallel.
    */
   profileUpdate: async ({}, use, testInfo) => {
-    const uniqueId = `${Date.now()}_w${testInfo.parallelIndex}`;
+    const uniqueId = uniqueSuffix(testInfo);
     await use({
       username: `UpdatedUser_${uniqueId}`,
       bio: 'Test bio for profile update',
       email: `updated_${uniqueId}@mail.com`,
-      password: '22222222',
+      password: UPDATED_PASSWORD,
     });
   },
 });

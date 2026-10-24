@@ -1,16 +1,16 @@
 /**
- * ProfilePage — /settings
+ * SettingsPage — /settings
  *
- * Wraps the settings form (profile update + logout). The read-only profile view
- * (/profile/[username]) is not currently exercised by any spec, so its locators are
- * intentionally not modelled here — they'd be dead code. Add them back alongside the
- * test that needs them.
+ * Wraps the settings form (profile update + logout). Named after the page it models:
+ * the read-only profile view (/profile/[username]) is not exercised by any spec, so it
+ * has no Page Object yet — add a ProfilePage alongside the first test that needs it.
  */
 
 import { type Page, type Locator, test, expect } from '@playwright/test';
 import { BasePage } from './BasePage';
+import { PAGES } from '../helpers/routes';
 
-export class ProfilePage extends BasePage {
+export class SettingsPage extends BasePage {
   /* Settings form (/settings) */
   readonly imageInput: Locator;
   readonly usernameInput: Locator;
@@ -33,7 +33,7 @@ export class ProfilePage extends BasePage {
     this.logoutButton = page.getByRole('button', { name: /logout/i });
   }
 
-  async gotoSettings() {
+  async goto() {
     await test.step('Navigate to settings', async () => {
       /*
        * Why toPass() around a plain goto:
@@ -48,11 +48,12 @@ export class ProfilePage extends BasePage {
        * the same URL), so the robust option is to retry the navigation itself. Once goto
        * has committed a fresh document the stale push is gone with the old page, so one
        * retry is enough in practice; the URL assertion proves we actually stayed there.
-       * src/ is not modified (project rule), hence the test-side guard.
+       * src/ is not modified (project rule), hence the test-side guard; the app bug is
+       * documented under "Known application bugs" in CLAUDE.md.
        */
       await expect(async () => {
-        await super.goto('/settings');
-        await expect(this.page).toHaveURL(/[/]settings$/, { timeout: 2_000 });
+        await super.goto(PAGES.settings);
+        await expect(this.page).toHaveURL(PAGES.settings, { timeout: 2_000 });
       }).toPass({ timeout: 15_000 });
     });
   }
@@ -89,11 +90,11 @@ export class ProfilePage extends BasePage {
   }
 
   async logout() {
-  await test.step('Logout', async () => {
-    await Promise.all([
-      this.page.waitForURL('**/'),
-      this.logoutButton.click(),
-    ]);
-  });
- }
+    await test.step('Logout', async () => {
+      await Promise.all([
+        this.waitForURL(PAGES.home),
+        this.logoutButton.click(),
+      ]);
+    });
+  }
 }

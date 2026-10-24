@@ -6,8 +6,9 @@
  * Page Objects are provided as fixtures (homePage, articlePage, createArticlePage).
  *
  * Two strategies for article data:
- *   - uiArticle fixture: used ONLY in the test that verifies UI creation. Creates the
- *     article via the editor UI and cleans it up in its own finally.
+ *   - createUiArticle fixture: used ONLY in the test that verifies UI creation. It is a
+ *     factory — the test calls it, so the creation flow runs in the test body — and
+ *     the fixture deletes whatever was created in its own finally.
  *   - seededArticle fixture: used in all other tests where an article is a precondition.
  *     Creates the article via API with a unique title → no slug collisions in parallel.
  *
@@ -17,8 +18,7 @@
 import { authedTest as test, expect } from '../fixtures/test-fixtures';
 import { GLOBAL_TEST_USER } from '../../globalSetup';
 import articlesData from '../fixtures/data/articles.json';
-import { expectResponse } from '../helpers/expectResponse';
-import { ROUTES } from '../helpers/routes';
+import { ROUTES, PAGES, matchesRoute } from '../helpers/routes';
 
 /* ================================================================== */
 /*  Article CRUD                                                       */
@@ -26,15 +26,15 @@ import { ROUTES } from '../helpers/routes';
 
 test.describe('Article CRUD @articles', () => {
 
-  test('should create an article and verify its content @smoke', async ({ uiArticle }) => {
+  test('should create an article and verify its content @smoke', async ({ createUiArticle }) => {
 
     const article = articlesData.validArticle;
 
-    /* uiArticle created the article through the UI (the flow under test) and
-     * will delete it afterwards — no manual slug tracking needed here. */
-    const { articlePage } = uiArticle;
+    /* The creation flow under test runs here, in the test body; the fixture
+     * deletes the article afterwards — no manual slug tracking needed. */
+    const { title, articlePage } = await createUiArticle();
 
-    await expect(articlePage.articleTitle).toHaveText(article.title);
+    await expect(articlePage.articleTitle).toHaveText(title);
     await expect(articlePage.articleBody).toContainText(article.body);
     await expect(articlePage.articleMeta).toContainText(GLOBAL_TEST_USER.username);
   });
@@ -57,68 +57,64 @@ test.describe('Article CRUD @articles', () => {
     });
   });
 
-  test('should create and then edit an article', async ({ page, homePage, articlePage, createArticlePage, seededArticle }) => {
+  test('should create and then edit an article', async ({ homePage, articlePage, createArticlePage, seededArticle }) => {
 
     const updated = articlesData.updatedArticle;
 
-    /* Navigate to the seeded article page */
-    await page.goto(`/article/${seededArticle.slug}`);
+    await articlePage.gotoArticle(seededArticle.slug);
 
     await articlePage.clickEdit();
-    await homePage.waitForURL('/editor/');
+    await homePage.waitForURL(PAGES.anyArticleEditor);
 
-    await expectResponse(page, ROUTES.articles.updateArticle, 200, () =>
-      createArticlePage.editArticle(updated.title, updated.description, updated.body)
-    );
-
-    await homePage.waitForURL('/article/');
+    /* The app leaves the editor only in updateArticle's onSuccess, and the article
+     * page re-fetches from the server — so the new title on screen proves the
+     * update was persisted, without coupling to the tRPC call. */
+    await createArticlePage.editArticle(updated.title, updated.description, updated.body);
+    await homePage.waitForURL(PAGES.anyArticle);
 
     await expect(articlePage.articleTitle).toHaveText(updated.title);
     await expect(articlePage.articleBody).toContainText(updated.body);
   });
 
-  test('should delete an article', async ({ page, homePage, articlePage, seededArticle }) => {
+  test('should delete an article', async ({ page, articlePage, seededArticle }) => {
 
-    /* Navigate directly to the seeded article */
-    await page.goto(`/article/${seededArticle.slug}`);
+    await articlePage.gotoArticle(seededArticle.slug);
 
-    await expectResponse(page, ROUTES.articles.deleteArticle, 200, () =>
-      articlePage.clickDelete()
-    );
+    /* clickDelete waits for the redirect home, which the app performs only in
+     * deleteArticle's onSuccess — the server confirmed the deletion. */
+    await articlePage.clickDelete();
 
-    await homePage.waitForURL('/');
-    await page.goto(`/article/${seededArticle.slug}`);
-    await expect(page).toHaveURL('/');
+    /* Re-opening the deleted article redirects home: it no longer exists */
+    await articlePage.gotoArticle(seededArticle.slug);
+    await expect(page).toHaveURL(PAGES.home);
   });
 
-  test('should delete article with comment @articles', async ({ page, homePage, articlePage, seededArticle }) => {
+  test('should delete article with comment @articles', async ({ page, articlePage, seededArticle }) => {
     test.fail(true, 'Known bug: FK constraint prevents article deletion when comments exist');
 
     const comment = articlesData.comment;
 
-    await page.goto(`/article/${seededArticle.slug}`);
+    await articlePage.gotoArticle(seededArticle.slug);
 
-    /* Add comment */
-    await expectResponse(page, ROUTES.comments.addCommentToArticle, 200, () =>
-      articlePage.addComment(comment.body)
-    );
+    /* Add comment — the list re-fetches only after the server saved it */
+    await articlePage.addComment(comment.body);
     await expect(articlePage.comments.filter({ hasText: comment.body })).toBeVisible();
 
     /* Attempt to delete article with comment — known bug: deletion fails.
      * We don't constrain the status here — the bug is exactly that this request
      * does not succeed, so we only wait for the deleteArticle call to happen. */
     const deleteResponse = page.waitForResponse(
-      (resp) => resp.url().includes(ROUTES.articles.deleteArticle)
+      (resp) => matchesRoute(resp.url(), ROUTES.articles.deleteArticle)
     );
 
     await articlePage.clickDelete();
     await deleteResponse;
 
 
-    /* After deletion should redirect to home — this is where the bug manifests */
-    await homePage.waitForURL('/');
-    await page.goto(`/article/${seededArticle.slug}`);
-    await expect(page).toHaveURL('/');
+    /* After deletion should redirect home — this is where the bug manifests
+     * (clickDelete above already waits for that redirect, which never comes) */
+    await articlePage.gotoArticle(seededArticle.slug);
+    await expect(page).toHaveURL(PAGES.home);
 
     /*
      * NOTE: I intentionally do NOT remove the slug from seededArticle here.
@@ -139,35 +135,34 @@ test.describe('Article CRUD @articles', () => {
 /* ================================================================== */
 
 test.describe('Article comments @articles', () => {
-  test('should add a comment to an article', async ({ page, articlePage, seededArticle }) => {
+  /*
+   * No network waits in this block: the comment list and the favorite counter update
+   * only in the mutations' onSuccess (cache invalidation / server response — no
+   * optimistic UI in the app), so the web-first assertion on what the user sees is
+   * already proof that the server accepted the change.
+   */
+  test('should add a comment to an article', async ({ articlePage, seededArticle }) => {
 
     const comment = articlesData.comment;
 
-    await page.goto(`/article/${seededArticle.slug}`);
-
-    await expectResponse(page, ROUTES.comments.addCommentToArticle, 200, () =>
-      articlePage.addComment(comment.body)
-    );
+    await articlePage.gotoArticle(seededArticle.slug);
+    await articlePage.addComment(comment.body);
 
     await expect(articlePage.comments.filter({ hasText: comment.body })).toBeVisible();
   });
 
-  test('should delete a comment from an article', async ({ page, articlePage, seededArticle }) => {
+  test('should delete a comment from an article', async ({ articlePage, seededArticle }) => {
 
     const comment = articlesData.comment;
 
-    await page.goto(`/article/${seededArticle.slug}`);
+    await articlePage.gotoArticle(seededArticle.slug);
 
     /* Add comment first */
-    await expectResponse(page, ROUTES.comments.addCommentToArticle, 200, () =>
-      articlePage.addComment(comment.body)
-    );
+    await articlePage.addComment(comment.body);
     await expect(articlePage.comments.filter({ hasText: comment.body })).toBeVisible();
 
     /* Delete comment */
-    await expectResponse(page, ROUTES.comments.removeCommentFromArticle, 200, () =>
-      articlePage.deleteComment(comment.body)
-    );
+    await articlePage.deleteComment(comment.body);
 
     await expect(articlePage.comments.filter({ hasText: comment.body })).not.toBeVisible();
   });
@@ -178,24 +173,20 @@ test.describe('Article comments @articles', () => {
 /* ================================================================== */
 
 test.describe('Article favorites @articles', () => {
-  test('should add and remove a favorite', async ({ page, homePage, seededArticle }) => {
+  test('should add and remove a favorite', async ({ homePage, seededArticle }) => {
 
-    /* Go to home and find the seeded article in feed */
+    /* Find the seeded article in the feed. findArticleAcrossPages, not a page-1
+     * lookup: under parallel load other workers' articles can push ours off page 1. */
     await homePage.goto();
-
-    const articlePreview = homePage.getArticleByTitle(seededArticle.title);
+    const articlePreview = await homePage.findArticleAcrossPages(seededArticle.title);
     const favoriteBtn = homePage.getFavoriteButton(articlePreview);
 
-    /* Add favorite */
-    await expectResponse(page, ROUTES.favorites.addArticleAsFavorite, 200, () =>
-      favoriteBtn.click()
-    );
+    /* Add favorite — the counter comes from the server response */
+    await favoriteBtn.click();
     await expect(favoriteBtn).toContainText('1');
 
     /* Remove favorite */
-    await expectResponse(page, ROUTES.favorites.removeArticleFromFavorite, 200, () =>
-      favoriteBtn.click()
-    );
+    await favoriteBtn.click();
     await expect(favoriteBtn).toContainText('0');
   });
 });

@@ -11,55 +11,49 @@
 import { type Page } from '@playwright/test';
 import { HomePage, CreateArticlePage, ArticlePage } from '../pages';
 import articlesData from '../fixtures/data/articles.json';
-import { expectResponse } from './expectResponse';
-import { ROUTES } from './routes';
+import { PAGES } from './routes';
 
 /**
  * Creates an article via the editor UI and returns its slug and ArticlePage instance.
  *
- * Why this exists as a helper and not a fixture:
- *   This function is used ONLY in 'should create an article and verify its content'
- *   which specifically tests the UI creation flow end-to-end. Making it a fixture
- *   would imply it's reusable setup — but its purpose is to be the thing under test,
- *   not a precondition. A helper function makes this intent explicit.
+ * Why this is a helper wrapped by a factory fixture:
+ *   It is used ONLY in 'should create an article and verify its content', which tests
+ *   the UI creation flow end-to-end — it is the thing under test, not a precondition.
+ *   The createUiArticle fixture hands the test a function that calls this helper, so
+ *   the flow runs in the test body while the fixture owns cleanup.
  *
  * Why not use seededArticle fixture here:
  *   seededArticle creates articles via API — bypassing the UI entirely. The test
  *   that verifies article creation must go through the UI to actually test it.
  *
- * Cleanup:
- *   The returned slug is handed back to the caller, which is responsible for
- *   deleting the article afterwards. In this project that responsibility lives in
- *   the `uiArticle` fixture (see test-fixtures.ts), which calls deleteArticle(slug)
- *   in its `finally` — so no orphaned articles accumulate even if the test fails.
- *   This helper no longer tracks slugs itself: pushing to a caller-owned array and
- *   relying on an afterEach hook was replaced by the fixture's try/finally lifecycle.
+ * Success signal:
+ *   The app navigates to /article/[slug] only in the createArticle mutation's
+ *   onSuccess, so reaching that path proves the server accepted the article - no
+ *   separate network wait needed (user-visible outcome over internal API coupling).
  *
- * @param page - Playwright Page instance (must be authenticated as a user who can create articles)
+ * Cleanup:
+ *   The returned slug goes back to the caller; the createUiArticle fixture deletes it
+ *   in its `finally`, so no orphaned articles accumulate even if the test fails.
+ *
+ * @param page  - Playwright Page instance (authenticated as a user who can create articles)
+ * @param title - article title; callers pass a unique one (parallel-safe slug)
  * @returns slug of the created article and an ArticlePage instance pointing to it
  */
 export async function createArticleViaUI(
-  page: Page
+  page: Page,
+  title: string
 ): Promise<{ slug: string; articlePage: ArticlePage }> {
   const article = articlesData.validArticle;
 
   const homePage = new HomePage(page);
   await homePage.goto();
   await homePage.navNewArticle.click();
-  await homePage.waitForURL('/editor');
+  await homePage.waitForURL(PAGES.newArticle);
 
   const createPage = new CreateArticlePage(page);
+  await createPage.createArticle(title, article.description, article.body, article.tagList[0]);
 
-  await expectResponse(page, ROUTES.articles.createArticle, 200, () =>
-    createPage.createArticle(
-      article.title,
-      article.description,
-      article.body,
-      article.tagList[0]
-    )
-  );
-
-  await homePage.waitForURL('/article/');
+  await homePage.waitForURL(PAGES.anyArticle);
 
   const articlePage = new ArticlePage(page);
   const slug = articlePage.getSlugFromURL();

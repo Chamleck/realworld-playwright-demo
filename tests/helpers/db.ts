@@ -115,8 +115,13 @@ export async function deleteUser(email: string): Promise<void> {
  * missing user instead of throwing (P2025) — teardown never fails on already-deleted data.
  */
 export async function deleteUserById(id: string): Promise<void> {
-  /* comments -> articles (also removes article-tag relations) -> user, FK order */
-  await prisma.comment.deleteMany({ where: { authorId: id } });
+  /* comments -> articles (also removes article-tag relations) -> user, FK order.
+   * Comments go first in BOTH directions: the user's own comments AND other users'
+   * comments on the user's articles — otherwise article.deleteMany hits the
+   * comment.articleId foreign key (the same FK behind the known app bug). */
+  await prisma.comment.deleteMany({
+    where: { OR: [{ authorId: id }, { article: { authorId: id } }] },
+  });
   await prisma.article.deleteMany({ where: { authorId: id } });
   await prisma.user.deleteMany({ where: { id } });
 }

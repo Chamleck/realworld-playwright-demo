@@ -59,3 +59,44 @@ export const ROUTES = {
     removeArticleFromFavorite: `${TRPC_BASE}/favorites.removeArticleFromFavorite`,
   },
 } as const;
+
+/**
+ * Does a response URL belong to the given tRPC route?
+ *
+ * Why not `url.includes(route)`:
+ *   1. Prefix collisions — `/api/trpc/articles.getArticles` is a substring of
+ *      `/api/trpc/articles.getArticlesBySlug`, so includes() matches the wrong procedure.
+ *   2. Batching — tRPC may merge calls into one request whose path lists several
+ *      procedures: `/api/trpc/articles.getArticles,tags.getUniqueTags?batch=1`.
+ * Comparing whole procedure names from the pathname handles both cases exactly.
+ */
+export function matchesRoute(url: string, route: string): boolean {
+  const { pathname } = new URL(url);
+  const prefix = `${TRPC_BASE}/`;
+  if (!pathname.startsWith(prefix) || !route.startsWith(prefix)) return false;
+
+  const procedures = pathname.slice(prefix.length).split(',');
+  return procedures.includes(route.slice(prefix.length));
+}
+
+/**
+ * PAGES — UI paths of the app under test, the user-facing counterpart of ROUTES.
+ *
+ * Why: page paths were string literals spread across Page Objects, specs and helpers
+ * ('/settings', '/editor', `/article/${slug}` ...). One table removes the duplication
+ * and gives BasePage.waitForURL exact targets to match against.
+ *
+ * - string  → an exact pathname (goto target, exact waitForURL match)
+ * - RegExp  → a pathname pattern, for pages whose path contains a generated slug
+ * - article() builds a concrete article path from a slug
+ */
+export const PAGES = {
+  home: '/',
+  login: '/login',
+  register: '/register',
+  settings: '/settings',
+  newArticle: '/editor',
+  article: (slug: string) => `/article/${encodeURIComponent(slug)}`,
+  anyArticle: /^[/]article[/][^/]+$/,
+  anyArticleEditor: /^[/]editor[/][^/]+$/,
+} as const;

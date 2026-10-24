@@ -6,6 +6,7 @@
 
 import { type Page, type Locator, test } from '@playwright/test';
 import { BasePage } from './BasePage';
+import { PAGES } from '../helpers/routes';
 
 export class ArticlePage extends BasePage {
   readonly articleTitle: Locator;
@@ -27,6 +28,13 @@ export class ArticlePage extends BasePage {
     this.editButton = page.getByRole('link', { name: /Edit Article/i });
     this.deleteButton = page.getByRole('button', { name: /Delete Article/i });
     this.articleMeta = page.locator('.article-meta').first();
+  }
+
+  /* Open an article by slug */
+  async gotoArticle(slug: string) {
+    await test.step(`Open article: ${slug}`, async () => {
+      await super.goto(PAGES.article(slug));
+    });
   }
 
   /* Get the slug from the current URL */
@@ -62,11 +70,11 @@ export class ArticlePage extends BasePage {
   /* Click Delete Article — shows confirmation dialog */
   async clickDelete() {
     await test.step('Click Delete Article', async () => {
-     this.page.once('dialog', dialog => dialog.accept());
-     await Promise.all([
-       this.page.waitForURL('**/'),
-       this.deleteButton.first().click(),
-    ]);
-  });
- }
+      this.page.once('dialog', (dialog) => dialog.accept());
+      await Promise.all([
+        this.waitForURL(PAGES.home),
+        this.deleteButton.first().click(),
+      ]);
+    });
+  }
 }

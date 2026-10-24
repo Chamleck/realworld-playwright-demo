@@ -51,13 +51,14 @@
  */
 
 import { expect, type Page, type Response } from '@playwright/test';
+import { matchesRoute } from './routes';
 
 /**
  * Wait for a tRPC response matching `route` and `status` that occurs as a result
  * of running `action`.
  *
  * @param page   - Playwright Page the response is expected on
- * @param route  - route path to match via url().includes() — use ROUTES.* constants
+ * @param route  - tRPC route to match exactly via matchesRoute() — use ROUTES.* constants
  * @param status - expected HTTP status code (e.g. 200 for success, 400 for validation error);
  *                 asserted on the first response for `route`, see the note above
  * @param action - the action that triggers the request (click, fill+submit, goto, ...)
@@ -72,7 +73,7 @@ export async function expectResponse(
   /* waitForResponse is called (and its listener attached) before action() starts —
    * array elements are evaluated left to right. */
   const [response] = await Promise.all([
-    page.waitForResponse((resp) => resp.url().includes(route)),
+    page.waitForResponse((resp) => matchesRoute(resp.url(), route)),
     action(),
   ]);
 

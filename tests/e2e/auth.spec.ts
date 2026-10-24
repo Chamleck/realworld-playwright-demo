@@ -12,14 +12,18 @@
  * and data fixtures (loginPage, signUpPage, registeredUser, ...) so tests declare the
  * pages they need in their arguments instead of constructing them by hand.
  *
+ * Synchronization: no network waits. Every outcome asserted here is rendered only
+ * after the server answered — the redirect home + username in the navbar after a
+ * successful register/login, the error list after a rejected one — so web-first
+ * assertions on the UI are both sufficient and decoupled from internal tRPC names.
+ *
  * Tags: @auth, @smoke
  */
 
 import { guestTest as test, expect } from '../fixtures/test-fixtures';
 import { GLOBAL_TEST_USER } from '../../globalSetup';
 import usersData from '../fixtures/data/users.json';
-import { expectResponse } from '../helpers/expectResponse';
-import { ROUTES } from '../helpers/routes';
+import { PAGES } from '../helpers/routes';
 
 /* ================================================================== */
 /*  Registration tests                                                 */
@@ -37,28 +41,23 @@ test.describe('Registration @auth', () => {
 
     await signUpPage.goto();
 
-    await expectResponse(signUpPage.page, ROUTES.auth.register, 200, () =>
-      signUpPage.register(registeredUser.username, registeredUser.email, registeredUser.password)
-    );
+    await signUpPage.register(registeredUser.username, registeredUser.email, registeredUser.password);
 
-    await homePage.waitForURL('/');
+    await homePage.waitForURL(PAGES.home);
     await expect(homePage.getNavProfile(registeredUser.username)).toBeVisible();
   });
 
-  test('should register and then logout successfully', async ({ signUpPage, homePage, profilePage, registeredUser }) => {
+  test('should register and then logout successfully', async ({ signUpPage, homePage, settingsPage, registeredUser }) => {
 
     await signUpPage.goto();
 
-    await expectResponse(signUpPage.page, ROUTES.auth.register, 200, () =>
-      signUpPage.register(registeredUser.username, registeredUser.email, registeredUser.password)
-    );
+    await signUpPage.register(registeredUser.username, registeredUser.email, registeredUser.password);
 
-    await homePage.waitForURL('/');
+    await homePage.waitForURL(PAGES.home);
     await expect(homePage.getNavProfile(registeredUser.username)).toBeVisible();
 
-    await profilePage.gotoSettings();
-    await profilePage.waitForURL('/settings');
-    await profilePage.logout();
+    await settingsPage.goto();
+    await settingsPage.logout();
 
     await expect(homePage.navSignIn).toBeVisible();
   });
@@ -76,9 +75,7 @@ test.describe('Registration validation @auth', () => {
 
       await signUpPage.goto();
 
-      await expectResponse(signUpPage.page, ROUTES.auth.register, 400, () =>
-        signUpPage.register(invalidUser.username, invalidUser.email, invalidUser.password)
-      );
+      await signUpPage.register(invalidUser.username, invalidUser.email, invalidUser.password);
 
       await expect(signUpPage.errorMessages.first()).toBeVisible();
     });
@@ -100,27 +97,23 @@ test.describe('Login @auth', () => {
 
     await loginPage.goto();
 
-    await expectResponse(loginPage.page, ROUTES.auth.login, 200, () =>
-      loginPage.login(GLOBAL_TEST_USER.email, GLOBAL_TEST_USER.password)
-    );
+    await loginPage.login(GLOBAL_TEST_USER.email, GLOBAL_TEST_USER.password);
 
-    await homePage.waitForURL('/');
+    await homePage.waitForURL(PAGES.home);
     await expect(homePage.getNavProfile(GLOBAL_TEST_USER.username)).toBeVisible();
   });
 
-  test('should login and logout successfully', async ({ loginPage, homePage, profilePage }) => {
+  test('should login and logout successfully', async ({ loginPage, homePage, settingsPage }) => {
 
     await loginPage.goto();
 
-    await expectResponse(loginPage.page, ROUTES.auth.login, 200, () =>
-      loginPage.login(GLOBAL_TEST_USER.email, GLOBAL_TEST_USER.password)
-    );
+    await loginPage.login(GLOBAL_TEST_USER.email, GLOBAL_TEST_USER.password);
 
-    await homePage.waitForURL('/');
+    await homePage.waitForURL(PAGES.home);
     await expect(homePage.getNavProfile(GLOBAL_TEST_USER.username)).toBeVisible();
 
-    await profilePage.gotoSettings();
-    await profilePage.logout();
+    await settingsPage.goto();
+    await settingsPage.logout();
 
     await expect(homePage.navSignIn).toBeVisible();
   });
@@ -131,9 +124,7 @@ test.describe('Login @auth', () => {
 
     await loginPage.goto();
 
-    await expectResponse(loginPage.page, ROUTES.auth.login, 400, () =>
-      loginPage.login(invalidUser.email, invalidUser.password)
-    );
+    await loginPage.login(invalidUser.email, invalidUser.password);
 
     await expect(loginPage.errorMessages.filter({ hasText: 'Invalid email' })).toBeVisible();
     await expect(loginPage.errorMessages.filter({ hasText: 'at least 8 character' })).toBeVisible();
@@ -151,7 +142,7 @@ test.describe('Auth navigation @auth', () => {
 
     await expect(signUpPage.loginLink).toBeVisible();
     await signUpPage.loginLink.click();
-    await signUpPage.waitForURL('/login');
+    await signUpPage.waitForURL(PAGES.login);
   });
 
   test('should navigate from login to register', async ({ loginPage }) => {
@@ -160,6 +151,6 @@ test.describe('Auth navigation @auth', () => {
 
     await expect(loginPage.registerLink).toBeVisible();
     await loginPage.registerLink.click();
-    await loginPage.waitForURL('/register');
+    await loginPage.waitForURL(PAGES.register);
   });
 });

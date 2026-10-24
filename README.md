@@ -102,10 +102,10 @@ Specs (tests/e2e/*.spec.ts)
   │     ├── testUser           — unique user seeded in DB, cleaned up after test
   │     ├── registeredUser     — unique credentials for UI registration + cleanup
   │     ├── seededArticle      — article created via API, cleaned up after test
-  │     ├── uiArticle          — article created via UI (creation-flow test), cleaned up
+  │     ├── createUiArticle    — factory: the test creates an article via UI, fixture cleans up
   │     └── profileUpdate      — unique profile data generated per test (parallel-safe)
   ├── Page Object fixtures (also shared via dataTest)
-  │     └── loginPage, signUpPage, homePage, createArticlePage, articlePage, profilePage
+  │     └── loginPage, signUpPage, homePage, createArticlePage, articlePage, settingsPage
   │         — tests receive ready-built page objects instead of `new XPage(page)`
   ├── Page Objects (tests/pages/*Page.ts)
   │     └── BasePage + 6 page classes, all action methods wrapped in test.step()
@@ -116,8 +116,8 @@ Fixtures call Helpers (tests/helpers/)
   ├── db.ts             — Prisma: seedUser, deleteUser, deleteUserById, deleteArticle
   ├── api.ts            — tRPC: loginViaAPI, registerViaAPI, createArticleViaAPI
   ├── articles.ts       — UI: createArticleViaUI (used only in UI creation flow test)
-  ├── routes.ts         — ROUTES: single source of truth for tRPC endpoint paths
-  ├── expectResponse.ts — expectResponse: arm-action-await network sync in one call
+  ├── routes.ts         — ROUTES (tRPC paths), PAGES (UI paths), matchesRoute (exact procedure match)
+  ├── expectResponse.ts — route wait + status assert, only where no UI outcome proves completion
   └── env.ts            — zod-validated environment variables
 </pre>
 

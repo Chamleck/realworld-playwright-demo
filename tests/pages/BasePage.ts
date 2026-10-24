@@ -6,6 +6,7 @@
  */
 
 import { type Page, type Locator } from '@playwright/test';
+import { PAGES } from '../helpers/routes';
 
 export class BasePage {
   readonly page: Page;
@@ -24,8 +25,8 @@ export class BasePage {
     this.navNewArticle = page.getByRole('link', { name: 'New Article' });
   }
 
-  /* Navigate to a path relative to baseURL */
-  async goto(path = '/') {
+  /* Navigate to a path relative to baseURL — pass PAGES.* values, not literals */
+  async goto(path: string = PAGES.home) {
     await this.page.goto(path);
   }
 
@@ -39,8 +40,21 @@ export class BasePage {
     return this.page.locator('.error-messages li');
   }
 
-  /* Wait for navigation to complete (URL contains the expected path) */
-  async waitForURL(path: string) {
-    await this.page.waitForURL(`**${path}**`);
+  /**
+   * Wait until the current pathname matches `path` (a PAGES.* value).
+   *
+   * string → exact pathname; RegExp → tested against the pathname.
+   *
+   * Why a predicate and not the old `**${path}**` glob: that glob made
+   * waitForURL('/') match EVERY URL (`**` + `/` + `**`), so redirects to home were
+   * never actually awaited and the following assertion raced the navigation. Matching
+   * the pathname exactly also stops '/editor' from matching '/editor/some-slug'.
+   * The predicate is evaluated on same-document (history API) navigations too, which
+   * is how the Next.js router moves between pages.
+   */
+  async waitForURL(path: string | RegExp) {
+    await this.page.waitForURL((url) =>
+      typeof path === 'string' ? url.pathname === path : path.test(url.pathname)
+    );
   }
 }

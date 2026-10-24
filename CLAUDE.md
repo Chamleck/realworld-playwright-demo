@@ -78,8 +78,8 @@ realworld-playwright-demo/
 │   │   ├── articles.ts            # UI helpers: createArticleViaUI
 │   │   ├── api.ts                 # tRPC helpers: loginViaAPI, registerViaAPI, createArticleViaAPI
 │   │   ├── db.ts                  # Prisma helpers: seedUser, deleteUser, deleteUserById, deleteArticle
-│   │   ├── routes.ts              # ROUTES: single source of truth for tRPC endpoint paths
-│   │   ├── expectResponse.ts      # expectResponse: arm-action-await network sync helper
+│   │   ├── routes.ts              # ROUTES (tRPC paths), PAGES (UI paths), matchesRoute
+│   │   ├── expectResponse.ts      # expectResponse: route wait + status assert (only where no UI outcome exists)
 │   │   └── env.ts                 # Typed env loader with zod validation
 │   └── pages/                     # Page Object Models: BasePage + 6 page classes (+ index.ts barrel)
 ├── globalSetup.ts                 # Runs before all tests: reset DB, save storageState
@@ -124,18 +124,19 @@ allure-history/                    # Per-browser history files (gitignored, gene
 ### Test architecture
 
 - **Helpers** (`tests/helpers/`) — low-level functions (DB operations, API calls, env, route constants, response sync). No Playwright dependency, except `expectResponse`/`articles` which take a `page`.
-  - `routes.ts` — `ROUTES` constant: single source of truth for tRPC endpoint paths. Never hand-author `/api/trpc/...` strings in specs; import `ROUTES.<router>.<procedure>` instead.
-  - `expectResponse.ts` — `expectResponse(page, route, status, action)`: arms `waitForResponse` on the route, runs the action (`Promise.all`), then asserts the status — collapses the repeated arm-action-await pattern into one call, guarantees the listener is attached before the action fires, and turns a wrong status into an immediate "expected 200, received 500" failure instead of a timeout.
+  - `routes.ts` — `ROUTES` (tRPC endpoint paths), `PAGES` (UI paths: strings = exact pathname, RegExp = slug pattern, `article(slug)` builder) and `matchesRoute(url, route)` (exact procedure-name match; handles tRPC batching and prefix collisions such as `getArticles` vs `getArticlesBySlug`). Never hand-author `/api/trpc/...` or page-path strings; import `ROUTES.<router>.<procedure>` / `PAGES.<page>`.
+  - `expectResponse.ts` — `expectResponse(page, route, status, action)`: arms `waitForResponse` on the route, runs the action (`Promise.all`), then asserts the status — collapses the repeated arm-action-await pattern into one call, guarantees the listener is attached before the action fires, and turns a wrong status into an immediate "expected 200, received 500" failure instead of a timeout. Use it ONLY where no user-visible outcome proves the request finished (currently: saving settings before `page.reload()`, and the client-side feed load in `HomePage` pagination) — see Conventions.
 - **Fixtures** (`tests/fixtures/test-fixtures.ts`) — high-level Playwright fixtures that use helpers. Manage lifecycle (setup before test, teardown after).
-  - Page Object fixtures (`loginPage`, `signUpPage`, `homePage`, `createArticlePage`, `articlePage`, `profilePage`) are defined on the `dataTest` base layer — tests receive ready-built page objects in their arguments instead of `new XPage(page)`.
-  - Data fixtures (`testUser`, `registeredUser`, `seededArticle`, `uiArticle`, `profileUpdate`) create their resource, provide it, and tear it down in `finally`. There are no manual `createdEmails`/`createdSlugs` arrays or `afterEach` cleanup hooks — the fixture's try/finally owns the lifecycle. `testUser` is deleted by its immutable `id` (`deleteUserById`), not by email: the profile tests change the email through the UI, and an email lookup would miss the row and leave the user behind.
+  - Page Object fixtures (`loginPage`, `signUpPage`, `homePage`, `createArticlePage`, `articlePage`, `settingsPage`) are defined on the `dataTest` base layer — tests receive ready-built page objects in their arguments instead of `new XPage(page)`.
+  - Shared data building blocks live once at the top of the file: `uniqueSuffix(testInfo)` (`Date.now()` + `_w<parallelIndex>`), `TEST_PASSWORD`, `UPDATED_PASSWORD`.
+  - Data fixtures (`testUser`, `registeredUser`, `seededArticle`, `createUiArticle`, `profileUpdate`) create their resource, provide it, and tear it down in `finally`. There are no manual `createdEmails`/`createdSlugs` arrays or `afterEach` cleanup hooks — the fixture's try/finally owns the lifecycle. `testUser` is deleted by its immutable `id` (`deleteUserById`), not by email: the profile tests change the email through the UI, and an email lookup would miss the row and leave the user behind.
 - **Page Objects** (`tests/pages/`) — one class per page, receives `page: Page` via constructor. All inherit from `BasePage`. All action methods wrapped in `test.step()` for granular Allure step hierarchy. Locators/methods that no spec exercises are not kept "just in case" — dead members were removed; add them back with the test that needs them.
 - **Specs** (`tests/e2e/`) — test files that import a test flavour and declare the fixtures they need.
   - `auth.spec.ts` → `guestTest` (logged-out page).
   - `articles.spec.ts` → `authedTest` (GLOBAL_TEST_USER session).
   - `profile.spec.ts` → `dynamicAuthedTest` (unique per-test testUser session).
 - **Data** (`tests/fixtures/data/`) — JSON test data, typed via `types.ts`. Reference entries by descriptive key (`emailAndPasswordInvalid`), never by magic array index. Fixed valid-user data was removed — registration uses the dynamic `registeredUser` fixture so parallel workers never collide on a shared email.
-- **Two article creation strategies**: `createArticleViaUI` helper (wrapped by the `uiArticle` fixture) is used ONLY in the test that verifies the UI creation flow; all other tests where an article is a precondition use the `seededArticle` fixture (API-based, faster, parallel-safe).
+- **Two article creation strategies**: `createArticleViaUI` helper (called through the `createUiArticle` factory fixture) is used ONLY in the test that verifies the UI creation flow; all other tests where an article is a precondition use the `seededArticle` fixture (API-based, faster, parallel-safe).
 
 ### Auth strategy
 
@@ -149,7 +150,7 @@ Overriding `contextOptions` injects storageState/localStorage while leaving the 
 - `testUser` fixture creates a unique user in DB via Prisma → provides to test → deletes after.
 - `registeredUser` fixture provides unique valid credentials for the UI-registration test → the test creates the user through the UI → fixture deletes it after in `finally`. Replaces the old `createdEmails` array + `afterEach`.
 - `seededArticle` creates an article via tRPC API as the pre-seeded user → provides slug/title/description/body to test → deletes after.
-- `uiArticle` creates an article through the editor UI (via `createArticleViaUI`) → provides slug + ArticlePage → deletes after in `finally`. Used only by the UI-creation-flow test. Replaces the old `createdSlugs` array + `afterEach`.
+- `createUiArticle` is a FACTORY fixture: it provides a function; the test calls it, so the UI creation flow (the behaviour under test) runs in the test body and its steps appear in the test, not under "Before Hooks". The fixture records each created slug and deletes it in `finally`. Titles get `uniqueSuffix` (the app's count-based slug suffix can race between workers). Used only by the UI-creation-flow test.
 - `profileUpdate` provides unique profile data (username/email/bio/password) per test → parallel-safe via `Date.now() + testInfo.parallelIndex`. Stateless — no cleanup needed.
 - All data and Page Object fixtures are defined in `dataTest` base layer — `guestTest`, `authedTest` and `dynamicAuthedTest` inherit them via extend chaining, no duplication.
 - Auth tests (`auth.spec.ts`) use `guestTest` — logged-out page, no storageState needed.
@@ -381,9 +382,21 @@ Done. Second-pass tightening of the existing suite based on external senior revi
 - **Centralized endpoint strings** — all `/api/trpc/...` literals moved into `tests/helpers/routes.ts` (`ROUTES.<router>.<procedure>`). No hand-authored route strings remain in specs or helpers — the plain-fetch API helpers (`api.ts`) build their URLs from `ROUTES` too.
 - **Dead code removed** — unused Page Object locators/methods deleted: `HomePage` (`bannerTitle`, `globalFeedTab`, `yourFeedTab`, `popularTags`, `paginationLinks`, `getFavoriteCount`, `clickArticle`, `clickTag`), `ProfilePage` (all profile-*view* locators + `gotoProfile`), `ArticlePage` (`articleTags`, `authorLink`, `followButton`, `favoriteButton`, `toggleFavorite`, `toggleFollow`), `BasePage` (`navHome`, `navSignUp`, `navSettings`). Each removal was verified against actual spec/helper usage first.
 - **README selector claim corrected** — "semantic locators only" softened to reflect the documented CSS fallback where the app exposes no test id (see Selectors note above).
-- **FK-constraint bug filed** — the pre-existing "cannot delete article with comments" bug (previously only captured via `test.fail()` + Allure category) is now also documented as a formal issue for communication, not just an in-code annotation (see "Known bugs — filed issues" below).
+- **FK-constraint bug documented** — the pre-existing "cannot delete article with comments" bug (previously only captured via `test.fail()` + Allure category) is now also written up as a bug report for communication, not just an in-code annotation (see "Known application bugs" below).
 
 Type-check (`tsconfig.test.json`) passes clean after the refactor.
+
+### M4.8 — Test-design hardening (second review pass) ✅
+
+Done in the same branch after verifying M4.7 locally (3 browsers × `--repeat-each=2`):
+
+- **User-visible assertions over network waits** — `expectResponse` removed wherever a web-first assertion on the UI already proves the server answered (the app has no optimistic UI: redirects, navbar username, error list, comments, favorite counter all render from the response). It remains only before `page.reload()` after saving settings and in `HomePage` pagination (4 call sites, down from ~20). `expectResponse` now matches the route only and ASSERTS the status (fail fast instead of a timeout) under `Promise.all`.
+- **`waitForURL` fixed** — the old `**${path}**` glob turned `waitForURL('/')` into `**/**`, which matches every URL, so redirects home were never awaited. `BasePage.waitForURL` now matches `url.pathname` exactly (string) or by pattern (RegExp).
+- **`PAGES` + `matchesRoute`** in `routes.ts` — no page-path literals left in POMs/specs/helpers; tRPC responses are matched by exact procedure name (batching- and prefix-safe).
+- **`createUiArticle` factory** replaces `uiArticle` — the UI creation flow under test now runs in the test body instead of fixture setup; unique title per worker.
+- **`SettingsPage`** replaces `ProfilePage` (it only models `/settings`); `goto()` retries navigation with `toPass()` around the app's double redirect (see Known application bugs).
+- **`deleteUserById`** — `testUser` is deleted by id (its email is changed by the profile tests); cascade deletes other users' comments on the user's articles too; idempotent via `deleteMany`.
+- **DRY test data** — `uniqueSuffix(testInfo)`, `TEST_PASSWORD`, `UPDATED_PASSWORD` defined once in `test-fixtures.ts`; `ArticlePage.gotoArticle(slug)` replaces raw `page.goto` in specs; the favorite test uses `findArticleAcrossPages` (parallel-safe).
 
 ## M5 — Optional Enhancements
 
@@ -428,7 +441,7 @@ Done. Each CI run now has its own Allure report URL on GitHub Pages.
 
 ---
 
-## Known bugs — filed issues
+## Known application bugs
 
 ### BUG: Deleting an article that has comments fails (FK constraint)
 
@@ -449,6 +462,16 @@ Done. Each CI run now has its own Allure report URL on GitHub Pages.
 **Evidence**: `should delete article with comment @articles` in `tests/e2e/articles.spec.ts`, plus the trace/video attached to that test's Allure entry under the "Known bugs" category.
 
 > Note: this is an application defect, not a framework issue. It is documented here (and should be filed as a GitHub issue on the app repo) because *communicating* a found bug is half the job — the `test.fail()` annotation alone documents it in the report but does not raise it for the dev team.
+
+### BUG: Login/registration redirects home twice
+
+**Status**: open, worked around in the test layer.
+
+**Summary**: after a successful login or registration the app calls `push('/')` twice — in the mutation's `onSuccess` and again from a `useEffect` that fires when `isLoggedIn` flips to true (`src/pages/login/index.tsx`, `src/pages/register/index.tsx`). The second push can abort a navigation the user (or a test) starts right after logging in: "Navigation to /settings is interrupted by another navigation to /". Seen on mobile-safari in ~1 of 10 runs of `should register and then logout successfully`.
+
+**Expected**: one redirect. Keeping only the `useEffect` (or only the `onSuccess` push) fixes it.
+
+**Test-side workaround**: `SettingsPage.goto()` retries the navigation with `expect(...).toPass()` and asserts the final URL — `src/` is not modified (project rule). Verified 40/40 with `--repeat-each=20` on mobile-safari.
 
 ---
 
@@ -507,7 +530,7 @@ stale-locator issues when the DOM updates between page transitions.
 
 Firefox and WebKit occasionally abort navigation (`NS_BINDING_ABORTED` / "interrupted by another navigation") when a new `goto()` is called while the browser is still processing a redirect from a previous action (logout, article deletion). This is a WebKit/Gecko timing issue — Chromium handles it gracefully, these engines don't.
 
-**Fix**: replace sequential `click()` + `waitForLoadState()` with `Promise.all([waitForURL('**/'), click()])` in the Page Object methods that trigger redirects (`logout()`, `clickDelete()`). `Promise.all` registers the navigation listener before the click fires — eliminating the race condition where the redirect completes before the listener is set up. `waitForURL('**/')` is the officially recommended Playwright pattern; deprecated `waitForNavigation` was considered and rejected. Applied in `ProfilePage.logout()` and `ArticlePage.clickDelete()`.
+**Fix**: replace sequential `click()` + `waitForLoadState()` with `Promise.all([this.waitForURL(PAGES.home), click()])` (originally the glob `'**/'`) in the Page Object methods that trigger redirects (`logout()`, `clickDelete()`). `Promise.all` registers the navigation listener before the click fires — eliminating the race condition where the redirect completes before the listener is set up. `waitForURL('**/')` is the officially recommended Playwright pattern; deprecated `waitForNavigation` was considered and rejected. Applied in `ProfilePage.logout()` and `ArticlePage.clickDelete()`.
 
 Nightly jobs for Firefox and mobile-safari also run with `--workers=1` to reduce parallel load on CI runners.
 
@@ -557,8 +580,9 @@ Conventions:
 - **New npm scripts** → update workflow, CLAUDE.md commands table, and README commands table in the same commit.
 - **Don't touch `src/`** unless adding `data-testid` attributes.
 - **Import the right test flavour**: `guestTest` for auth/registration specs (logged-out page), `authedTest` for article tests (GLOBAL_TEST_USER session), `dynamicAuthedTest` for profile tests (unique testUser session). All three come from `../fixtures/test-fixtures`.
-- **Synchronize on network with `expectResponse`** from `tests/helpers/expectResponse.ts` and reference endpoints via `ROUTES` from `tests/helpers/routes.ts` — never hand-author `/api/trpc/...` strings. Prefer asserting on the user-visible outcome where possible; use `expectResponse` when you genuinely need to wait for a mutation to persist.
-- **Clean up via fixtures, not afterEach** — if a test creates a resource, create it in a fixture that tears it down in `finally` (like `testUser`, `registeredUser`, `seededArticle`, `uiArticle`). Don't reintroduce manual tracking arrays.
+- **Assert on what the user sees** — default to web-first assertions on the UI outcome. Use `expectResponse` (`tests/helpers/expectResponse.ts`) only when nothing on screen proves the request finished (e.g. before `page.reload()` after a save). Reference endpoints via `ROUTES` and pages via `PAGES` (`tests/helpers/routes.ts`) — never hand-author `/api/trpc/...` or page-path strings; match responses with `matchesRoute`, not `url.includes`.
+- **Navigation waits** — `xPage.waitForURL(PAGES.<page>)` (exact pathname / RegExp pattern). Never pass a glob; `**/**` matches everything.
+- **Clean up via fixtures, not afterEach** — if a test creates a resource, create it in a fixture that tears it down in `finally` (like `testUser`, `registeredUser`, `seededArticle`). If the creation itself is the behaviour under test, give the test a factory fixture (like `createUiArticle`) so the action stays in the test body. Delete users by `id` when a test may change their email. Don't reintroduce tracking arrays in specs.
 - **Name test data** — reference JSON entries by descriptive key, never by array index.
 - **Verbose comments** are welcome — this is a learning/demo project.
 - **Tags**: use `@tagname` in test titles for filtering. Common tags: `@smoke`, `@auth`, `@articles`, `@profile`.

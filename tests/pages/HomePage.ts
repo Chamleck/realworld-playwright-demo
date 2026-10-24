@@ -6,7 +6,8 @@
 
 import { type Page, type Locator, test } from '@playwright/test';
 import { BasePage } from './BasePage';
-import { ROUTES } from '../helpers/routes';
+import { ROUTES, PAGES } from '../helpers/routes';
+import { expectResponse } from '../helpers/expectResponse';
 
 export class HomePage extends BasePage {
   readonly articlePreviews: Locator;
@@ -18,7 +19,7 @@ export class HomePage extends BasePage {
 
   async goto() {
     await test.step('Navigate to home page', async () => {
-      await super.goto('/');
+      await super.goto(PAGES.home);
     });
   }
 
@@ -75,19 +76,16 @@ export class HomePage extends BasePage {
 
   for (let pass = 0; pass < PASSES; pass++) {
     for (const pageNum of SEARCH_PAGES) {
-      const responsePromise = this.page.waitForResponse(
-        resp =>
-          resp.url().includes(ROUTES.articles.getArticles) &&
-          resp.status() === 200,
-      );
-
       /*
        * Navigate via URL rather than clicking pagination links — avoids stale
-       * locator issues when the DOM updates between pages. Page 1 uses '/'
-       * (no param) so the Pagination component renders its default active state.
+       * locator issues when the DOM updates between pages. Page 1 uses the bare home
+       * path (no param) so the Pagination component renders its default active state.
+       * The feed is fetched client-side after load, hence the wait on getArticles.
        */
-      await this.page.goto(pageNum === 1 ? '/' : `/?offset=${pageNum}`);
-      await responsePromise;
+      const target = pageNum === 1 ? PAGES.home : `${PAGES.home}?offset=${pageNum}`;
+      await expectResponse(this.page, ROUTES.articles.getArticles, 200, () =>
+        this.page.goto(target)
+      );
       await realArticleCard.waitFor({ state: 'attached', timeout: 10_000 });
 
       if (await preview.count() > 0) return preview;
