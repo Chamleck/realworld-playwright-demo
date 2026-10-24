@@ -94,22 +94,31 @@ npm test
 
 <pre>
 Specs (tests/e2e/*.spec.ts)
-  ├── Fixtures (tests/fixtures/test-fixtures.ts)
-  │     ├── authedPage         — browser with pre-loaded auth session (global user)
+  ├── Test flavours (tests/fixtures/test-fixtures.ts)
+  │     ├── guestTest          — plain logged-out page (auth/registration specs)
+  │     ├── authedTest         — page pre-loaded with GLOBAL_TEST_USER session
+  │     └── dynamicAuthedTest  — page authenticated as a unique per-test testUser
+  ├── Data fixtures (shared via the dataTest base layer)
   │     ├── testUser           — unique user seeded in DB, cleaned up after test
-  │     ├── authedTestUserPage — browser authenticated as testUser (for profile tests)
+  │     ├── registeredUser     — unique credentials for UI registration + cleanup
   │     ├── seededArticle      — article created via API, cleaned up after test
+  │     ├── uiArticle          — article created via UI (creation-flow test), cleaned up
   │     └── profileUpdate      — unique profile data generated per test (parallel-safe)
+  ├── Page Object fixtures (also shared via dataTest)
+  │     └── loginPage, signUpPage, homePage, createArticlePage, articlePage, profilePage
+  │         — tests receive ready-built page objects instead of `new XPage(page)`
   ├── Page Objects (tests/pages/*Page.ts)
   │     └── BasePage + 6 page classes, all action methods wrapped in test.step()
   └── Test Data (tests/fixtures/data/*.json)
         └── typed JSON templates for users, articles, comments
 
 Fixtures call Helpers (tests/helpers/)
-  ├── db.ts      — Prisma: seedUser, deleteUser, deleteArticle
-  ├── api.ts     — tRPC: loginViaAPI, registerViaAPI, createArticleViaAPI
-  ├── articles.ts — UI: createArticleViaUI (used only in UI creation flow test)
-  └── env.ts     — zod-validated environment variables
+  ├── db.ts             — Prisma: seedUser, deleteUser, deleteArticle
+  ├── api.ts            — tRPC: loginViaAPI, registerViaAPI, createArticleViaAPI
+  ├── articles.ts       — UI: createArticleViaUI (used only in UI creation flow test)
+  ├── routes.ts         — ROUTES: single source of truth for tRPC endpoint paths
+  ├── expectResponse.ts — expectResponse: arm-action-await network sync in one call
+  └── env.ts            — zod-validated environment variables
 </pre>
 
 ### Browser coverage
@@ -173,9 +182,10 @@ Both workflows support `dev`, `staging`, and `production` environments via a `wo
 ### Auth strategy
 
 `globalSetup` logs in once via tRPC API → writes `storageState.json` directly (no browser needed). Tests use three patterns:
+- `guestTest` — no context override; the page stays logged out. Used in `auth.spec.ts` (registration, login, navigation).
 - `authedTest` — overrides `contextOptions` with GLOBAL_TEST_USER storageState. Playwright creates and owns the context — video/trace/screenshot apply natively. Used in `articles.spec.ts`.
 - `dynamicAuthedTest` — overrides `contextOptions` with unique `testUser` token injected into localStorage. Playwright resolves `testUser → contextOptions → context → page`. Used in `profile.spec.ts`.
-- Both inherit data fixtures from `dataTest` base layer — single definition, no duplication.
+- All three inherit the same data and Page Object fixtures from the `dataTest` base layer — single definition, no duplication.
 - `contextOptions` override chosen over `context` override to avoid Playwright bug #35397 — explicit `context.close()` drops video attachments before reporters collect them.
 
 ### Database isolation

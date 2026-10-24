@@ -4,7 +4,8 @@
  * Architecture — three-layer inheritance:
  *
  * base (Playwright built-in)
- * └── dataTest — data fixtures shared across all authenticated tests
+ * └── dataTest — data + Page Object fixtures shared across all tests
+ * ├── guestTest — no auth session (plain page); for auth/registration specs
  * ├── authedTest — overrides contextOptions with GLOBAL_TEST_USER session
  * └── dynamicAuthedTest — overrides contextOptions with unique per-test user
  *
@@ -16,19 +17,36 @@
  * inside custom context fixtures drops video attachments before allure-playwright 
  * can collect them.
  *
+ * Why Page Objects are fixtures (not `new XPage(page)` in every test):
+ * Instantiating page objects by hand in each test is boilerplate that the fixture
+ * system exists to remove. Providing them as fixtures lets a test declare exactly
+ * the pages it needs in its arguments — `{ loginPage, homePage }` — and receive them
+ * ready to use. Tests read like scenarios, and there's one place that knows how a
+ * page object is built. Page object fixtures are defined on the dataTest base layer,
+ * so all three test flavours (guest / authed / dynamic) inherit them.
+ *
  * Usage in specs:
+ * import { guestTest as test, expect } from '../fixtures/test-fixtures';
  * import { authedTest as test, expect } from '../fixtures/test-fixtures';
  * import { dynamicAuthedTest as test, expect } from '../fixtures/test-fixtures';
- * // auth.spec.ts uses plain: import { test, expect } from '@playwright/test';
  */
 
 import { test as base, expect } from '@playwright/test';
 import path from 'path';
 import { seedUser, deleteUser, deleteArticle, type SeedUserResult } from '../helpers/db';
 import { loginViaAPI, createArticleViaAPI } from '../helpers/api';
+import { createArticleViaUI } from '../helpers/articles';
 import articlesData from './data/articles.json';
 import { env } from '../helpers/env';
 import { GLOBAL_TEST_USER } from '../../globalSetup';
+import {
+  LoginPage,
+  SignUpPage,
+  HomePage,
+  CreateArticlePage,
+  ArticlePage,
+  ProfilePage,
+} from '../pages';
 
 /* Path to the storageState file created by globalSetup */
 const STORAGE_STATE_PATH = path.resolve(
@@ -45,6 +63,20 @@ const STORAGE_STATE_PATH = path.resolve(
  * Includes DB fields plus the plaintext password (for login via UI if needed).
  */
 interface TestUser extends SeedUserResult {
+  password: string;
+}
+
+/**
+ * RegisteredUser — unique, valid user data for UI registration tests.
+ *
+ * Unlike testUser (which is seeded directly into the DB), this user is NOT
+ * created up front — the registration test itself creates it through the UI,
+ * which is the thing under test. The fixture only generates unique credentials
+ * and guarantees cleanup afterwards (see the registeredUser fixture below).
+ */
+interface RegisteredUser {
+  username: string;
+  email: string;
   password: string;
 }
 
@@ -73,25 +105,96 @@ interface ProfileUpdate {
   password: string;
 }
 
+/**
+ * UiArticle — what the uiArticle fixture provides to the test.
+ *
+ * Unlike seededArticle (created via API), this article is created through the
+ * editor UI — because the test that uses it verifies the UI creation flow itself.
+ * The fixture owns cleanup: it deletes the article in `finally`, replacing the
+ * previous manual createdSlugs array + afterEach in articles.spec.ts.
+ */
+interface UiArticle {
+  slug: string;
+  articlePage: ArticlePage;
+}
+
+/**
+ * PageObjects — the set of Page Object fixtures available to every test.
+ * Declared once here so all three test flavours share the same typed surface.
+ */
+interface PageObjects {
+  loginPage: LoginPage;
+  signUpPage: SignUpPage;
+  homePage: HomePage;
+  createArticlePage: CreateArticlePage;
+  articlePage: ArticlePage;
+  profilePage: ProfilePage;
+}
+
 /* ------------------------------------------------------------------ */
-/* Layer 1: dataTest — shared data fixtures                          */
+/* Layer 1: dataTest — shared data + Page Object fixtures            */
 /* ------------------------------------------------------------------ */
 
 /**
- * dataTest — base layer with data fixtures shared across all tests.
+ * dataTest — base layer with data and Page Object fixtures shared across all tests.
  *
- * Defines seededArticle, testUser, profileUpdate in one place.
- * authedTest and dynamicAuthedTest inherit these via extend chaining —
+ * Data fixtures: seededArticle, testUser, registeredUser, profileUpdate.
+ * Page Object fixtures: loginPage, signUpPage, homePage, createArticlePage,
+ *   articlePage, profilePage.
+ *
+ * guestTest, authedTest and dynamicAuthedTest inherit these via extend chaining —
  * no duplication, single source of truth for each fixture.
  *
- * These fixtures are data-only — they don't depend on browser context
- * and work correctly regardless of which context override is active.
+ * The data fixtures are data-only — they don't depend on browser context and work
+ * correctly regardless of which context override is active. The Page Object fixtures
+ * depend only on `page`, so they also work under any context override.
  */
-const dataTest = base.extend<{
-  seededArticle: SeededArticle;
-  testUser: TestUser;
-  profileUpdate: ProfileUpdate;
-}>({
+const dataTest = base.extend<
+  {
+    seededArticle: SeededArticle;
+    uiArticle: UiArticle;
+    testUser: TestUser;
+    registeredUser: RegisteredUser;
+    profileUpdate: ProfileUpdate;
+  } & PageObjects
+>({
+  /* ---------------------------------------------------------------- */
+  /* Page Object fixtures                                             */
+  /* ---------------------------------------------------------------- */
+
+  /*
+   * Each page object fixture simply constructs the page object with the current
+   * `page` and provides it to the test. No teardown needed — page objects hold no
+   * resources of their own, they're thin wrappers over locators.
+   */
+  loginPage: async ({ page }, use) => {
+    await use(new LoginPage(page));
+  },
+
+  signUpPage: async ({ page }, use) => {
+    await use(new SignUpPage(page));
+  },
+
+  homePage: async ({ page }, use) => {
+    await use(new HomePage(page));
+  },
+
+  createArticlePage: async ({ page }, use) => {
+    await use(new CreateArticlePage(page));
+  },
+
+  articlePage: async ({ page }, use) => {
+    await use(new ArticlePage(page));
+  },
+
+  profilePage: async ({ page }, use) => {
+    await use(new ProfilePage(page));
+  },
+
+  /* ---------------------------------------------------------------- */
+  /* Data fixtures                                                    */
+  /* ---------------------------------------------------------------- */
+
   /**
    * seededArticle fixture.
    *
@@ -114,6 +217,27 @@ const dataTest = base.extend<{
       body: article.body,
       tagList: article.tagList,
     });
+
+    try {
+      await use(created);
+    } finally {
+      await deleteArticle(created.slug);
+    }
+  },
+
+  /**
+   * uiArticle fixture.
+   *
+   * Creates an article through the editor UI (via createArticleViaUI) and provides
+   * its slug + ArticlePage to the test. Used ONLY by the test that verifies the UI
+   * creation flow — every other article precondition uses seededArticle (API-based).
+   *
+   * The page must be authenticated for this to work, so this fixture is only used
+   * under authedTest. Cleanup (deleteArticle) runs in `finally` — this replaces the
+   * manual createdSlugs array + afterEach that previously lived in articles.spec.ts.
+   */
+  uiArticle: async ({ page }, use) => {
+    const created = await createArticleViaUI(page);
 
     try {
       await use(created);
@@ -146,6 +270,40 @@ const dataTest = base.extend<{
   },
 
   /**
+   * registeredUser fixture.
+   *
+   * Provides unique, valid credentials for a user that the REGISTRATION test
+   * will create through the UI. The fixture deliberately does NOT create the user
+   * up front — creating it is the behaviour under test. It only:
+   *   1. generates parallel-safe unique credentials (so two workers never try to
+   *      register the same email — a fixed users.json email would collide), and
+   *   2. deletes the user in `finally`, whether the test passes or fails.
+   *
+   * This replaces the previous hand-rolled `createdEmails` array + afterEach cleanup:
+   * the create-and-teardown lifecycle now lives in one fixture, consistent with how
+   * testUser and seededArticle already work.
+   */
+  registeredUser: async ({}, use, testInfo) => {
+    const uniqueId = `${Date.now()}_w${testInfo.parallelIndex}`;
+    const email = `registered_${uniqueId}@test.com`;
+
+    const user: RegisteredUser = {
+      username: `RegUser_${uniqueId}`,
+      email,
+      password: 'Test1234!',
+    };
+
+    try {
+      await use(user);
+    } finally {
+      /* The test registered this user via the UI — clean it up from the DB.
+       * deleteUser is a no-op if the user was never actually created (e.g. the
+       * test failed before submitting), so this is always safe to call. */
+      await deleteUser(email);
+    }
+  },
+
+  /**
    * profileUpdate fixture.
    *
    * Generates unique profile update data per test to avoid
@@ -163,7 +321,22 @@ const dataTest = base.extend<{
 });
 
 /* ------------------------------------------------------------------ */
-/* Layer 2a: authedTest — GLOBAL_TEST_USER session                    */
+/* Layer 2a: guestTest — no auth session (plain page)                */
+/* ------------------------------------------------------------------ */
+
+/**
+ * guestTest — inherits dataTest without any context override.
+ *
+ * The page starts as a fresh, unauthenticated browser (no storageState) —
+ * exactly what registration, login and auth-navigation tests need. It exists
+ * so those tests can still use the Page Object and data fixtures (loginPage,
+ * signUpPage, registeredUser, ...) instead of `new XPage(page)` and manual cleanup,
+ * while keeping the guest (logged-out) session that plain `@playwright/test` gave them.
+ */
+export const guestTest = dataTest;
+
+/* ------------------------------------------------------------------ */
+/* Layer 2b: authedTest — GLOBAL_TEST_USER session                    */
 /* ------------------------------------------------------------------ */
 
 /**
@@ -181,7 +354,7 @@ export const authedTest = dataTest.extend({
 });
 
 /* ------------------------------------------------------------------ */
-/* Layer 2b: dynamicAuthedTest — unique per-test user session        */
+/* Layer 2c: dynamicAuthedTest — unique per-test user session        */
 /* ------------------------------------------------------------------ */
 
 /**

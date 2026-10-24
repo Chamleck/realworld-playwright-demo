@@ -11,6 +11,8 @@
 import { type Page } from '@playwright/test';
 import { HomePage, CreateArticlePage, ArticlePage } from '../pages';
 import articlesData from '../fixtures/data/articles.json';
+import { expectResponse } from './expectResponse';
+import { ROUTES } from './routes';
 
 /**
  * Creates an article via the editor UI and returns its slug and ArticlePage instance.
@@ -25,18 +27,19 @@ import articlesData from '../fixtures/data/articles.json';
  *   seededArticle creates articles via API — bypassing the UI entirely. The test
  *   that verifies article creation must go through the UI to actually test it.
  *
- * Slug tracking:
- *   The created article's slug is pushed to createdSlugs so the afterEach hook
- *   can delete it via Prisma even if the test fails mid-way. This prevents
- *   orphaned articles from accumulating in the test database between runs.
+ * Cleanup:
+ *   The returned slug is handed back to the caller, which is responsible for
+ *   deleting the article afterwards. In this project that responsibility lives in
+ *   the `uiArticle` fixture (see test-fixtures.ts), which calls deleteArticle(slug)
+ *   in its `finally` — so no orphaned articles accumulate even if the test fails.
+ *   This helper no longer tracks slugs itself: pushing to a caller-owned array and
+ *   relying on an afterEach hook was replaced by the fixture's try/finally lifecycle.
  *
  * @param page - Playwright Page instance (must be authenticated as a user who can create articles)
- * @param createdSlugs - Array to track created slugs for cleanup in afterEach
  * @returns slug of the created article and an ArticlePage instance pointing to it
  */
 export async function createArticleViaUI(
-  page: Page,
-  createdSlugs: string[]
+  page: Page
 ): Promise<{ slug: string; articlePage: ArticlePage }> {
   const article = articlesData.validArticle;
 
@@ -47,23 +50,19 @@ export async function createArticleViaUI(
 
   const createPage = new CreateArticlePage(page);
 
-  const responsePromise = page.waitForResponse(
-    (resp) => resp.url().includes('/api/trpc/articles.createArticle') && resp.status() === 200
+  await expectResponse(page, ROUTES.articles.createArticle, 200, () =>
+    createPage.createArticle(
+      article.title,
+      article.description,
+      article.body,
+      article.tagList[0]
+    )
   );
 
-  await createPage.createArticle(
-    article.title,
-    article.description,
-    article.body,
-    article.tagList[0]
-  );
-
-  await responsePromise;
   await homePage.waitForURL('/article/');
 
   const articlePage = new ArticlePage(page);
   const slug = articlePage.getSlugFromURL();
-  createdSlugs.push(slug);
 
   return { slug, articlePage };
 }

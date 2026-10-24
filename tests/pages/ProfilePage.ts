@@ -1,23 +1,16 @@
 /**
- * ProfilePage — /profile/[username] and /settings
+ * ProfilePage — /settings
  *
- * Combines profile view and settings form in one Page Object
- * since they share the same user context and are tested together.
+ * Wraps the settings form (profile update + logout). The read-only profile view
+ * (/profile/[username]) is not currently exercised by any spec, so its locators are
+ * intentionally not modelled here — they'd be dead code. Add them back alongside the
+ * test that needs them.
  */
 
-import { type Page, type Locator, test } from '@playwright/test';
+import { type Page, type Locator, test, expect } from '@playwright/test';
 import { BasePage } from './BasePage';
 
 export class ProfilePage extends BasePage {
-  /* Profile view (/profile/[username]) */
-  readonly profileUsername: Locator;
-  readonly profileBio: Locator;
-  readonly profileImage: Locator;
-  readonly myArticlesTab: Locator;
-  readonly favoritedArticlesTab: Locator;
-  readonly editProfileButton: Locator;
-  readonly followButton: Locator;
-
   /* Settings form (/settings) */
   readonly imageInput: Locator;
   readonly usernameInput: Locator;
@@ -30,15 +23,6 @@ export class ProfilePage extends BasePage {
   constructor(page: Page) {
     super(page);
 
-    /* Profile view locators */
-    this.profileUsername = page.locator('h4');
-    this.profileBio = page.locator('p').filter({ has: page.locator(':not(a)') });
-    this.profileImage = page.locator('.user-img');
-    this.myArticlesTab = page.getByRole('link', { name: 'My Articles' });
-    this.favoritedArticlesTab = page.getByRole('link', { name: 'Favorited Articles' });
-    this.editProfileButton = page.getByRole('link', { name: /Edit Profile Settings/i });
-    this.followButton = page.locator('.btn-outline-secondary, .btn-secondary').first();
-
     /* Settings form locators */
     this.imageInput = page.getByPlaceholder('URL of profile picture');
     this.usernameInput = page.getByPlaceholder('Your Name');
@@ -49,15 +33,27 @@ export class ProfilePage extends BasePage {
     this.logoutButton = page.getByRole('button', { name: /logout/i });
   }
 
-  async gotoProfile(username: string) {
-    await test.step(`Navigate to profile: ${username}`, async () => {
-      await super.goto(`/profile/${encodeURIComponent(username)}`);
-    });
-  }
-
   async gotoSettings() {
     await test.step('Navigate to settings', async () => {
-      await super.goto('/settings');
+      /*
+       * Why toPass() around a plain goto:
+       * The app redirects to '/' TWICE after a successful login/register — once in the
+       * mutation's onSuccess and once more from a useEffect that fires when isLoggedIn
+       * flips to true (src/pages/register/index.tsx, src/pages/login/index.tsx). The
+       * second client-side push can land while page.goto('/settings') is in flight and
+       * aborts it ("Navigation ... is interrupted by another navigation to '/'").
+       * Seen on mobile-safari at ~1 in 10 runs of the register → logout test.
+       *
+       * There is no DOM signal for "the redundant push has happened" (both pushes target
+       * the same URL), so the robust option is to retry the navigation itself. Once goto
+       * has committed a fresh document the stale push is gone with the old page, so one
+       * retry is enough in practice; the URL assertion proves we actually stayed there.
+       * src/ is not modified (project rule), hence the test-side guard.
+       */
+      await expect(async () => {
+        await super.goto('/settings');
+        await expect(this.page).toHaveURL(/[/]settings$/, { timeout: 2_000 });
+      }).toPass({ timeout: 15_000 });
     });
   }
 

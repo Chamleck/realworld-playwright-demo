@@ -1,28 +1,19 @@
 /**
  * HomePage — /
  *
- * Contains the article feed, popular tags sidebar, and pagination.
+ * Contains the article feed and pagination used by the global-feed tests.
  */
 
 import { type Page, type Locator, test } from '@playwright/test';
 import { BasePage } from './BasePage';
+import { ROUTES } from '../helpers/routes';
 
 export class HomePage extends BasePage {
-  readonly bannerTitle: Locator;
-  readonly globalFeedTab: Locator;
-  readonly yourFeedTab: Locator;
   readonly articlePreviews: Locator;
-  readonly popularTags: Locator;
-  readonly paginationLinks: Locator;
 
   constructor(page: Page) {
     super(page);
-    this.bannerTitle = page.getByTestId('banner-title');
-    this.globalFeedTab = page.getByRole('link', { name: 'Global Feed' });
-    this.yourFeedTab = page.getByRole('link', { name: 'Your Feed' });
     this.articlePreviews = page.locator('.article-preview');
-    this.popularTags = page.locator('.sidebar .tag-pill');
-    this.paginationLinks = page.locator('ul.pagination li.page-item:not(.active) a.page-link');
   }
 
   async goto() {
@@ -41,25 +32,6 @@ export class HomePage extends BasePage {
   /* Get the favorite (heart) button within a specific article preview */
   getFavoriteButton(articlePreview: Locator): Locator {
     return articlePreview.locator('.btn-outline-primary, .btn-primary').first();
-  }
-
-  /* Get the favorite count within a specific article preview */
-  getFavoriteCount(articlePreview: Locator): Locator {
-    return this.getFavoriteButton(articlePreview);
-  }
-
-  /* Click on an article title to navigate to the article page */
-  async clickArticle(title: string) {
-    await test.step(`Open article: ${title}`, async () => {
-      await this.page.getByRole('link', { name: title }).first().click();
-    });
-  }
-
-  /* Click on a tag in the sidebar */
-  async clickTag(tagName: string) {
-    await test.step(`Click tag: ${tagName}`, async () => {
-      await this.popularTags.filter({ hasText: tagName }).click();
-    });
   }
 
   async findArticleAcrossPages(title: string): Promise<Locator> {
@@ -105,7 +77,7 @@ export class HomePage extends BasePage {
     for (const pageNum of SEARCH_PAGES) {
       const responsePromise = this.page.waitForResponse(
         resp =>
-          resp.url().includes('/api/trpc/articles.getArticles') &&
+          resp.url().includes(ROUTES.articles.getArticles) &&
           resp.status() === 200,
       );
 

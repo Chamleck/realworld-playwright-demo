@@ -10,24 +10,18 @@ import { type Page, type Locator } from '@playwright/test';
 export class BasePage {
   readonly page: Page;
 
-  /* Common navigation elements (visible on every page) */
-  readonly navHome: Locator;
+  /* Common navigation elements used across specs */
   readonly navSignIn: Locator;
-  readonly navSignUp: Locator;
   readonly navNewArticle: Locator;
-  readonly navSettings: Locator;
 
   constructor(page: Page) {
     this.page = page;
 
-    /* Guest nav links */
-    this.navHome = page.getByRole('link', { name: 'Home' });
+    /* Guest nav link — visible when logged out (login/logout assertions) */
     this.navSignIn = page.getByRole('link', { name: 'Sign in' });
-    this.navSignUp = page.getByRole('link', { name: 'Sign up' });
 
-    /* Authenticated nav links */
+    /* Authenticated nav link — used by the UI article-creation flow */
     this.navNewArticle = page.getByRole('link', { name: 'New Article' });
-    this.navSettings = page.getByRole('link', { name: 'Settings' });
   }
 
   /* Navigate to a path relative to baseURL */
