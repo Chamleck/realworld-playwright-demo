@@ -111,30 +111,14 @@ export async function deleteUser(email: string): Promise<void> {
  * updated user in the database. Fixtures that seed a user and hand it to a test that
  * may edit it must clean up by the immutable id.
  *
- * Idempotent: a missing user is a no-op, so teardown never fails on already-deleted data.
+ * Idempotent without a lookup: every step is a deleteMany, which affects 0 rows for a
+ * missing user instead of throwing (P2025) — teardown never fails on already-deleted data.
  */
 export async function deleteUserById(id: string): Promise<void> {
-  const user = await prisma.user.findUnique({
-    where: { id },
-    select: { id: true },
-  });
-
-  if (!user) return;
-
-  /* Delete comments by this user */
-  await prisma.comment.deleteMany({
-    where: { authorId: id },
-  });
-
-  /* Delete articles by this user (also removes article-tag relations) */
-  await prisma.article.deleteMany({
-    where: { authorId: id },
-  });
-
-  /* Finally delete the user */
-  await prisma.user.delete({
-    where: { id },
-  });
+  /* comments -> articles (also removes article-tag relations) -> user, FK order */
+  await prisma.comment.deleteMany({ where: { authorId: id } });
+  await prisma.article.deleteMany({ where: { authorId: id } });
+  await prisma.user.deleteMany({ where: { id } });
 }
 
 /* ------------------------------------------------------------------ */
