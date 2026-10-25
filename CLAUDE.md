@@ -533,7 +533,9 @@ stale-locator issues when the DOM updates between page transitions.
 
 Firefox and WebKit occasionally abort navigation (`NS_BINDING_ABORTED` / "interrupted by another navigation") when a new `goto()` is called while the browser is still processing a redirect from a previous action (logout, article deletion). This is a WebKit/Gecko timing issue — Chromium handles it gracefully, these engines don't.
 
-**Fix**: replace sequential `click()` + `waitForLoadState()` with `Promise.all([this.waitForURL(PAGES.home), click()])` (originally the glob `'**/'`) in the Page Object methods that trigger redirects (`logout()`, `clickDelete()`). `Promise.all` registers the navigation listener before the click fires — eliminating the race condition where the redirect completes before the listener is set up. `waitForURL('**/')` is the officially recommended Playwright pattern; deprecated `waitForNavigation` was considered and rejected. Applied in `ProfilePage.logout()` and `ArticlePage.clickDelete()`.
+**Fix**: always await the redirect (`waitForURL(PAGES.home)`) before the next `goto()` — not `waitForLoadState()`, which resolves on the current page. Originally done as `Promise.all([this.waitForURL('**/'), click()])` inside the Page Object methods that redirect; that glob matched every URL, so the redirect was never actually awaited (fixed with a pathname predicate in `BasePage.waitForURL`). `waitForURL` returns immediately when the URL already matches, so awaiting it right after the click is equally safe; deprecated `waitForNavigation` was considered and rejected.
+
+`ArticlePage.clickDelete()` only clicks and confirms the dialog — the caller awaits the outcome: the redirect home in the happy path, the `deleteArticle` response status in the known-bug test (the FK bug returns 500 and never redirects, so a redirect wait inside the method turned that failure into a 30 s timeout).
 
 Nightly jobs for Firefox and mobile-safari also run with `--workers=1` to reduce parallel load on CI runners.
 
