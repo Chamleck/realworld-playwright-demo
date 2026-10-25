@@ -3,7 +3,7 @@
 ![E2E Tests](https://github.com/Chamleck/realworld-playwright-demo/actions/workflows/e2e.yml/badge.svg?branch=tests%2Fe2e-suite)
 ![Allure](https://img.shields.io/badge/allure-3.8.2-orange)
 ![Nightly Regression](https://github.com/Chamleck/realworld-playwright-demo/actions/workflows/nightly.yml/badge.svg)
-![Playwright](https://img.shields.io/badge/playwright-1.59-blue)
+![Playwright](https://img.shields.io/badge/playwright-1.64-blue)
 ![License](https://img.shields.io/badge/license-MIT-green)
 
 > End-to-end test automation portfolio project: **Playwright + TypeScript** framework built from scratch against a RealWorld (Conduit) full-stack application.
@@ -41,7 +41,7 @@ Each branch opens a PR into its parent — the PRs show the evolution of the pro
 
 ### Prerequisites
 
-- Node.js 18+
+- Node.js 20+ (CI uses the version pinned in `.nvmrc`)
 - npm
 
 ### Install & run tests
@@ -143,8 +143,8 @@ Key decision: this project tests a Next.js app with JWT auth in `localStorage`. 
 - Both support manual trigger via `workflow_dispatch` with `grep` (tag filter) and `environment` (dev/staging/production). Browser selection available in `e2e.yml` (default: chromium) — `nightly.yml` always runs all 4 browsers.
 - Workers: 2 in CI — GitHub runners handle 2 parallel workers stably for this suite size.
 - Artifacts: Playwright HTML report + Allure report (always), traces/screenshots/videos (on failure only).
-- **Docker considered and deprioritized**: GitHub Actions `ubuntu-latest` runners provide a clean, reproducible environment per run. Docker would add complexity and image pull time without meaningful benefit at this scale.
-- **Allure report** (`pages.yml`): reusable workflow publishing each run to its own URL — `/{browser}/runs/{YYYYMMDD_HHMMSS}/`. Report identifier is a UTC timestamp generated once per run by a dedicated `setup` job and shared across all matrix jobs — prevents cross-workflow counter collisions between `e2e.yml` and `nightly.yml`. Deploy uses custom git commands with `git rm` for correct retention (last 20 runs per browser, regex `^[0-9]{8}_[0-9]{6}$`) and retry logic for push conflicts and retry logic for push conflicts. The deployment explicitly bypasses Jekyll build constraints (.nojekyll) and ensures strict delivery of nested JSON test assets. Navigation index at [GitHub Pages](https://chamleck.github.io/realworld-playwright-demo).
+- **Docker considered and deprioritized**: GitHub Actions `ubuntu-latest` runners provide a clean environment per run. Docker would add complexity and image pull time without meaningful benefit at this scale. Caveat: `ubuntu-latest` is a moving label — its move to Ubuntu 26 broke browser installs on Playwright 1.59 (fixed by upgrading Playwright); a pinned Playwright Docker image is the planned long-term answer.
+- **Allure report** (`pages.yml`): reusable workflow publishing each run to its own URL — `/{browser}/runs/{YYYYMMDD_HHMMSS}/`. Report identifier is a UTC timestamp generated once per run by a dedicated `setup` job and shared across all matrix jobs — prevents cross-workflow counter collisions between `e2e.yml` and `nightly.yml`. Deploy uses custom git commands with `git rm` for correct retention (last 20 runs per browser, regex `^[0-9]{8}_[0-9]{6}$`) and retry logic for push conflicts. An empty-report guard fails the publish job when the E2E job died before tests ran, so a dead pipeline never shows a green publish. The deployment explicitly bypasses Jekyll build constraints (.nojekyll) and ensures strict delivery of nested JSON test assets. Navigation index at [GitHub Pages](https://chamleck.github.io/realworld-playwright-demo).
 - Each pipeline job's Summary shows a direct link to that specific run's Allure report.
 - **Allure 3** (`allure@3.x`) — new Awesome UI with improved visualization, JSONL-based history tracking.
 

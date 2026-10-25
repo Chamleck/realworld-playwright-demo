@@ -66,26 +66,42 @@ jobs:
 
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
         with:
           fetch-depth: 0
 
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: 18
-          cache: npm
-
-      - name: Install dependencies
-        run: npm ci
-
-      # Download allure-results artifact from the calling workflow run
+      # Download allure-results artifact from the calling workflow run.
+      # Must run AFTER checkout: checkout cleans untracked files in the workspace.
       - name: Download allure-results artifact
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           name: ${{ inputs.artifact-name }}
           path: allure-results/
           github-token: ${{ secrets.GITHUB_TOKEN }}
+
+      # Guard against publishing an empty report.
+      # The E2E jobs create executor.json / environment.properties with `if: always()`,
+      # so the artifact exists even when the job died BEFORE tests ran (e.g. browser
+      # install failure). Without this check such a run published an empty report and
+      # this job went green, masking a dead pipeline. Checked here — the single place
+      # shared by e2e.yml and nightly.yml — because the per-leg result of a matrix job
+      # is not available to the calling workflow (needs.<matrix-job>.result is aggregated).
+      - name: Verify test results exist
+        run: |
+          if ! ls allure-results/*-result.json > /dev/null 2>&1; then
+            echo "::error title=Nothing to publish::No Allure test results for ${{ inputs.browser }} — the E2E job failed before tests ran. Report not published."
+            exit 1
+          fi
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v7
+        with:
+          # Single source of truth for the Node version — see e2e.yml.
+          node-version-file: .nvmrc
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
 
       # Restore per-browser history from gh-pages for trend data.
       # On first run, gh-pages or history file may not exist — skipped gracefully.

@@ -32,7 +32,7 @@ The system under test (SUT) is a [RealWorld](https://github.com/gothinkster/real
 
 ### Test framework
 
-- **Playwright 1.59** + **TypeScript**
+- **Playwright 1.64** + **TypeScript**
 - **Allure 3** reporter (`allure-playwright@3.x` + `allure@3.x`) — Allure 3 CLI with new Awesome UI, JSONL-based history per browser/device, configured via `allurerc.mjs`
 - **Playwright Trace Viewer** (built-in) — trace.zip attached directly to Allure report on failure; link to `trace.playwright.dev` included for online viewing
 - **GitHub Actions** — PR pipeline (Chromium) + nightly regression (all browsers)
@@ -101,6 +101,8 @@ allure-history/                    # Per-browser history files (gitignored, gene
 ### Package manager
 
 **npm** (not pnpm, not yarn). `package-lock.json` is committed.
+
+**Node.js** version is pinned in `.nvmrc` (22) — the single source of truth: every workflow reads it via `actions/setup-node` `node-version-file`, so CI and local dev cannot drift. Playwright 1.64 declares `engines.node >= 20`.
 
 ### Code style
 
@@ -207,13 +209,13 @@ New variables must be added to: `.env.example` + `tests/helpers/env.ts` + GitHub
 
 ### PR Pipeline (`e2e.yml`)
 
-- Triggers: push/PR to `setup/playwright`, `tests/e2e-suite`, `dev`, `main`
+- Triggers: push to `setup/playwright`, `tests/e2e-suite`, `dev`, `main`; pull requests into `main`, `dev`, `tests/e2e-suite` (the working branch — feature PRs are gated before merge)
 - Browser: Chromium by default — any browser can be selected via `project` input on manual trigger
 - Gates: `type:check` → `lint` → Playwright tests (in order)
 - Workers: 2 in CI (up from 1 — GitHub runners handle 2 workers stably for this suite size)
 - Manual trigger: `grep` input for tag filtering + `environment` input for target env + `project` input for browser selection (chromium/firefox/mobile-chrome/mobile-safari)
 - Artifacts: Playwright report, Allure report (always), traces/screenshots/videos (on failure)
-- Playwright browser binaries cached via `actions/cache@v4` — key `playwright-{os}-{project}-{package-lock-hash}` gives each browser its own cache entry; invalidates automatically on Playwright version upgrade. Saves 1–3 min per run after first execution.
+- Playwright browser binaries cached via `actions/cache@v6` — key `playwright-{os}-{project}-{package-lock-hash}` gives each browser its own cache entry; invalidates automatically on Playwright version upgrade. Saves 1–3 min per run after first execution.
 - `setup` job runs first — generates a UTC timestamp (`YYYYMMDD_HHMMSS`) once and exposes it via `outputs.run-id`. Both `e2e` and `publish` jobs consume it via `needs.setup.outputs.run-id`, guaranteeing the same report path in `executor.json` and on gh-pages.
 - Allure `executor.json` and `environment.properties` generated per run — populates EXECUTORS (`buildOrder: github.run_id` for cross-workflow trend sorting, CI run link, browser) and ENVIRONMENT (Base URL, branch, commit, Run ID) sections in Allure report
 - After tests: calls `pages.yml` reusable workflow to publish report to `/{browser}/runs/{YYYYMMDD_HHMMSS}/`
@@ -236,6 +238,7 @@ New variables must be added to: `.env.example` + `tests/helpers/env.ts` + GitHub
 ### Allure Report — GitHub Pages (`pages.yml`)
 
 - Reusable workflow (`workflow_call`) — called by `e2e.yml` and each `nightly.yml` matrix job
+- Empty-report guard — the job fails with `Nothing to publish` when the downloaded artifact has no `*-result.json`. The E2E jobs write `executor.json` / `environment.properties` with `if: always()`, so the artifact exists even when a job died before tests ran (e.g. browser install failure); without the guard an empty report was published and Publish went green, masking a dead pipeline. The check lives here, not in the callers, because a matrix job's per-leg result is not visible to the calling workflow
 - Each run published to its own URL: `/{browser}/runs/{YYYYMMDD_HHMMSS}/`
 - `run-id` input (UTC timestamp, format `YYYYMMDD_HHMMSS`) replaces the old `run-number` input. Root cause of the migration: `e2e.yml` and `nightly.yml` have independent `github.run_number` counters but share the same gh-pages namespace. When the nightly's run_number fell below existing runs in gh-pages (accumulated from e2e.yml's higher-frequency Chromium runs), retention treated the freshly-deployed report as "oldest" and deleted it immediately. UTC timestamp is always monotonically increasing and unique regardless of which workflow deployed it.
 - History preserved per browser/device: `/{browser}/allure-history.jsonl` on gh-pages
@@ -331,7 +334,7 @@ Done. Both `e2e.yml` and `nightly.yml` updated with:
 - Refactored `globalSetup.ts` — removed Chromium dependency from setup; storageState now written directly as JSON via `fs.writeFileSync`, making setup browser-agnostic (fixes Firefox/WebKit nightly jobs crashing at `chromium.launch()`)
 - Firefox and WebKit nightly jobs run with `--workers=1` to avoid `NS_BINDING_ABORTED` flakiness in CI — Chromium jobs keep `--workers=2`
 
-**Docker considered and deprioritized**: GitHub Actions `ubuntu-latest` runners provide a clean, reproducible environment for each run. Adding a Docker layer would increase complexity and image pull time without meaningful isolation benefit at this project's scale. Noted here so the decision is explicit, not accidental.
+**Docker considered and deprioritized**: GitHub Actions `ubuntu-latest` runners provide a clean environment for each run. Adding a Docker layer would increase complexity and image pull time without meaningful isolation benefit at this project's scale. Noted here so the decision is explicit, not accidental. Caveat: `ubuntu-latest` is a moving label — see "ubuntu-latest moved to Ubuntu 26" in Known quirks; a pinned Playwright Docker image is the planned long-term answer.
 
 ### M4.4 + M4.5 — Allure history + GitHub Pages publish ✅
 
@@ -464,6 +467,10 @@ Nightly jobs for Firefox and mobile-safari also run with `--workers=1` to reduce
 Installing WebKit via `npx playwright install --with-deps webkit` on GitHub Actions `ubuntu-latest` takes up to 5 minutes on first run — longer than Chromium (~1 min) or Firefox (~2 min) due to ~180 system-level dependencies on Linux. The nightly `mobile-safari` job has a 30-minute timeout to accommodate this. From the second run onwards, browser binaries are restored from cache and installation is near-instant — only system dependencies (apt packages) are re-installed each time. This is the cost of testing against a real WebKit engine rather than a user-agent simulation — unlike Cypress which cannot run real Safari tests at all.
 
 ---
+
+### ubuntu-latest moved to Ubuntu 26 — browser install broke (2026-10)
+
+GitHub migrated the `ubuntu-latest` label to Ubuntu 26.04 from 2026-10-19. Playwright 1.59 maps an unknown Ubuntu to its own platform id (`ubuntu26.04-x64`) without a fallback and has no browser builds or system-dependency list for it, so `npx playwright install --with-deps` failed on every job ("Install Playwright browser"). Ubuntu 26.04 support first ships in Playwright 1.61. Fix: upgrade Playwright (1.64), which also required Node >= 20 in CI (`.nvmrc`). Lesson: a floating runner label and a pinned tool version drift apart — keep Playwright current rather than pinning the runner to hide the gap. While debugging, two more issues surfaced and were fixed: Publish jobs went green on top of the dead E2E jobs (see the empty-report guard in `pages.yml`), and `cross-env` was used by `test:with-report:*` but missing from `package.json` (present only in the lockfile, so any `npm install` silently removed it).
 
 ### `tsconfig.test.tsbuildinfo` was committed by accident
 

@@ -72,12 +72,13 @@ jobs:
 
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       - name: Setup Node.js
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v7
         with:
-          node-version: 18
+          # Single source of truth for the Node version — see e2e.yml.
+          node-version-file: .nvmrc
           cache: npm
 
       - name: Install dependencies
@@ -127,7 +128,7 @@ jobs:
       # No restore-keys: a stale binary cache is useless and wastes restore time.
       # System dependencies (--with-deps) are not cached — apt is fast enough.
       - name: Cache Playwright browsers
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: ~/.cache/ms-playwright
           key: playwright-${{ runner.os }}-${{ matrix.project }}-${{ hashFiles('package-lock.json') }}
@@ -193,7 +194,7 @@ jobs:
         run: npm run allure:generate
 
       - name: Upload Allure results
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         if: always()
         with:
           name: allure-results-${{ matrix.project }}
@@ -201,7 +202,7 @@ jobs:
           retention-days: 14
 
       - name: Upload Playwright report
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         if: always()
         with:
           name: playwright-report-${{ matrix.project }}
@@ -209,7 +210,7 @@ jobs:
           retention-days: 14
 
       - name: Upload Allure report
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         if: always()
         with:
           name: allure-report-${{ matrix.project }}
@@ -217,7 +218,7 @@ jobs:
           retention-days: 14
 
       - name: Upload test results (traces, screenshots, videos)
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         if: failure()
         with:
           name: test-results-${{ matrix.project }}
