@@ -18,7 +18,8 @@
 import { authedTest as test, expect } from '../fixtures/test-fixtures';
 import { GLOBAL_TEST_USER } from '../../globalSetup';
 import articlesData from '../fixtures/data/articles.json';
-import { ROUTES, PAGES, matchesRoute } from '../helpers/routes';
+import { ROUTES, PAGES } from '../helpers/routes';
+import { expectResponse } from '../helpers/expectResponse';
 
 /* ================================================================== */
 /*  Article CRUD                                                       */
@@ -80,9 +81,13 @@ test.describe('Article CRUD @articles', () => {
 
     await articlePage.gotoArticle(seededArticle.slug);
 
-    /* clickDelete waits for the redirect home, which the app performs only in
-     * deleteArticle's onSuccess — the server confirmed the deletion. */
+    /* The app redirects home only in deleteArticle's onSuccess — reaching home
+     * means the server confirmed the deletion. Awaiting it before the next goto
+     * also prevents NS_BINDING_ABORTED on Firefox/WebKit. waitForURL returns at
+     * once if the redirect has already happened, so calling it after the click
+     * cannot miss the navigation. */
     await articlePage.clickDelete();
+    await articlePage.waitForURL(PAGES.home);
 
     /* Re-opening the deleted article redirects home: it no longer exists */
     await articlePage.gotoArticle(seededArticle.slug);
@@ -100,19 +105,16 @@ test.describe('Article CRUD @articles', () => {
     await articlePage.addComment(comment.body);
     await expect(articlePage.comments.filter({ hasText: comment.body })).toBeVisible();
 
-    /* Attempt to delete article with comment — known bug: deletion fails.
-     * We don't constrain the status here — the bug is exactly that this request
-     * does not succeed, so we only wait for the deleteArticle call to happen. */
-    const deleteResponse = page.waitForResponse(
-      (resp) => matchesRoute(resp.url(), ROUTES.articles.deleteArticle)
-    );
+    /* Known bug: the server answers 500 (Prisma FK constraint on the comment), so
+     * the test fails right here, fast and with the real cause:
+     *   "HTTP status of articles.deleteArticle: expected 200, received 500".
+     * The status is asserted on the response because the UI outcome of the bug is
+     * the ABSENCE of a redirect, which can only be observed by waiting for a timeout. */
+    await expectResponse(page, ROUTES.articles.deleteArticle, 200, () => articlePage.clickDelete());
 
-    await articlePage.clickDelete();
-    await deleteResponse;
-
-
-    /* After deletion should redirect home — this is where the bug manifests
-     * (clickDelete above already waits for that redirect, which never comes) */
+    /* Reached only once the bug is fixed — then test.fail reports
+     * "expected to fail but passed", the signal to remove the annotation. */
+    await articlePage.waitForURL(PAGES.home);
     await articlePage.gotoArticle(seededArticle.slug);
     await expect(page).toHaveURL(PAGES.home);
 

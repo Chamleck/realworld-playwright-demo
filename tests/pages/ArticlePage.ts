@@ -67,14 +67,18 @@ export class ArticlePage extends BasePage {
     });
   }
 
-  /* Click Delete Article — shows confirmation dialog */
+  /* Click Delete Article and confirm.
+   * The app asks window.confirm() before deleting. The handler is registered BEFORE
+   * the click because Playwright auto-dismisses unhandled dialogs — confirm() would
+   * return false and no delete request would be sent.
+   * Deliberately does NOT wait for the outcome: the caller decides what to assert —
+   * the redirect home (successful deletion) or the deleteArticle response status
+   * (the known FK bug answers 500 and never redirects, so a built-in redirect wait
+   * would turn that failure into a 30 s navigation timeout). */
   async clickDelete() {
     await test.step('Click Delete Article', async () => {
       this.page.once('dialog', (dialog) => dialog.accept());
-      await Promise.all([
-        this.waitForURL(PAGES.home),
-        this.deleteButton.first().click(),
-      ]);
+      await this.deleteButton.first().click();
     });
   }
 }
