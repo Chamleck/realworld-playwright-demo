@@ -209,7 +209,7 @@ New variables must be added to: `.env.example` + `tests/helpers/env.ts` + GitHub
 
 ### PR Pipeline (`e2e.yml`)
 
-- Triggers: push/PR to `setup/playwright`, `tests/e2e-suite`, `dev`, `main`
+- Triggers: push to `setup/playwright`, `tests/e2e-suite`, `dev`, `main`; pull requests into `main`, `dev`, `tests/e2e-suite` (the working branch — feature PRs are gated before merge)
 - Browser: Chromium by default — any browser can be selected via `project` input on manual trigger
 - Gates: `type:check` → `lint` → Playwright tests (in order)
 - Workers: 2 in CI (up from 1 — GitHub runners handle 2 workers stably for this suite size)

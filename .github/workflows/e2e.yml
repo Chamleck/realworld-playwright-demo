@@ -28,8 +28,10 @@ name: E2E Tests
 on:
   push:
     branches: [setup/playwright, tests/e2e-suite, dev, main]
+  # tests/e2e-suite is the working branch: PRs into it must be gated too —
+  # without it, feature PRs were merged with no CI run at all.
   pull_request:
-    branches: [main, dev]
+    branches: [main, dev, tests/e2e-suite]
 
   workflow_dispatch:
     inputs:
