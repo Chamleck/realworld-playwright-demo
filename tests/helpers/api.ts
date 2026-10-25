@@ -10,6 +10,9 @@
  */
 
 import { env } from './env';
+/* Same ROUTES constants as the specs use: one place to change if a tRPC procedure is renamed.
+ * routes.ts has no Playwright dependency, so the plain-fetch rule for helpers still holds. */
+import { ROUTES } from './routes';
 
 /* ------------------------------------------------------------------ */
 /*  Types                                                              */
@@ -50,7 +53,7 @@ export interface RegisterInput {
  * This is how tRPC batches multiple calls into one HTTP request.
  */
 export async function loginViaAPI(input: LoginInput): Promise<AuthResult> {
-  const response = await fetch(`${env.BASE_URL}/api/trpc/auth.login?batch=1`, {
+  const response = await fetch(`${env.BASE_URL}${ROUTES.auth.login}?batch=1`, {
     method: 'POST',
     headers: { 'content-type': 'application/json' },
     body: JSON.stringify({
@@ -93,7 +96,7 @@ export async function loginViaAPI(input: LoginInput): Promise<AuthResult> {
  * need to bypass the API layer entirely.
  */
 export async function registerViaAPI(input: RegisterInput): Promise<AuthResult> {
-  const response = await fetch(`${env.BASE_URL}/api/trpc/auth.register?batch=1`, {
+  const response = await fetch(`${env.BASE_URL}${ROUTES.auth.register}?batch=1`, {
     method: 'POST',
     headers: { 'content-type': 'application/json' },
     body: JSON.stringify({
@@ -162,7 +165,7 @@ export async function createArticleViaAPI(
   token: string,
   input: ArticleInput
 ): Promise<ArticleResult> {
-  const response = await fetch(`${env.BASE_URL}/api/trpc/articles.createArticle?batch=1`, {
+  const response = await fetch(`${env.BASE_URL}${ROUTES.articles.createArticle}?batch=1`, {
     method: 'POST',
     headers: {
       'content-type': 'application/json',

@@ -1,40 +1,40 @@
 /**
  * ArticlePage — /article/[slug]
  *
- * Displays article content, comments, favorite/follow buttons, and edit/delete controls.
+ * Displays article content, comments, and edit/delete controls.
  */
 
 import { type Page, type Locator, test } from '@playwright/test';
 import { BasePage } from './BasePage';
+import { PAGES } from '../helpers/routes';
 
 export class ArticlePage extends BasePage {
   readonly articleTitle: Locator;
   readonly articleBody: Locator;
-  readonly articleTags: Locator;
   readonly commentInput: Locator;
   readonly postCommentButton: Locator;
   readonly comments: Locator;
   readonly editButton: Locator;
   readonly deleteButton: Locator;
-  readonly favoriteButton: Locator;
-  readonly followButton: Locator;
-  readonly authorLink: Locator;
   readonly articleMeta: Locator;
 
   constructor(page: Page) {
     super(page);
     this.articleTitle = page.locator('.banner h1');
     this.articleBody = page.locator('.article-content');
-    this.articleTags = page.locator('.tag-list .tag-pill');
     this.commentInput = page.getByPlaceholder('Write a comment...');
     this.postCommentButton = page.getByRole('button', { name: 'Post Comment' });
     this.comments = page.locator('.card');
     this.editButton = page.getByRole('link', { name: /Edit Article/i });
     this.deleteButton = page.getByRole('button', { name: /Delete Article/i });
-    this.favoriteButton = page.locator('.article-meta .btn-outline-primary, .article-meta .btn-primary').first();
-    this.followButton = page.locator('.article-meta .btn-outline-secondary, .article-meta .btn-secondary').first();
-    this.authorLink = page.locator('.article-meta').first().getByRole('link').first();
     this.articleMeta = page.locator('.article-meta').first();
+  }
+
+  /* Open an article by slug */
+  async gotoArticle(slug: string) {
+    await test.step(`Open article: ${slug}`, async () => {
+      await super.goto(PAGES.article(slug));
+    });
   }
 
   /* Get the slug from the current URL */
@@ -60,20 +60,6 @@ export class ArticlePage extends BasePage {
     });
   }
 
-  /* Click the favorite button (toggle) */
-  async toggleFavorite() {
-    await test.step('Toggle favorite', async () => {
-      await this.favoriteButton.click();
-    });
-  }
-
-  /* Click the follow button (toggle) */
-  async toggleFollow() {
-    await test.step('Toggle follow', async () => {
-      await this.followButton.click();
-    });
-  }
-
   /* Click Edit Article — navigates to /editor/[slug] */
   async clickEdit() {
     await test.step('Click Edit Article', async () => {
@@ -84,11 +70,11 @@ export class ArticlePage extends BasePage {
   /* Click Delete Article — shows confirmation dialog */
   async clickDelete() {
     await test.step('Click Delete Article', async () => {
-     this.page.once('dialog', dialog => dialog.accept());
-     await Promise.all([
-       this.page.waitForURL('**/'),
-       this.deleteButton.first().click(),
-    ]);
-  });
- }
+      this.page.once('dialog', (dialog) => dialog.accept());
+      await Promise.all([
+        this.waitForURL(PAGES.home),
+        this.deleteButton.first().click(),
+      ]);
+    });
+  }
 }

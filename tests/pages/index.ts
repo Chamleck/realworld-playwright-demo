@@ -16,4 +16,4 @@ export { SignUpPage } from './SignUpPage';
 export { HomePage } from './HomePage';
 export { CreateArticlePage } from './CreateArticlePage';
 export { ArticlePage } from './ArticlePage';
-export { ProfilePage } from './ProfilePage';
+export { SettingsPage } from './SettingsPage';

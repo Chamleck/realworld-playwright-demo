@@ -33,10 +33,17 @@ export interface InvalidUserData extends UserData {
 export interface UsersFixture {
   /** Pre-seeded user from base.sqlite (matches .env TEST_USER_* credentials) */
   defaultUser: UserData;
-  /** Valid user data for registration tests */
-  validUsers: UserData[];
-  /** Invalid user data for validation tests — each entry violates at least one rule */
+  /**
+   * Invalid user data for the parametrized validation loop — each entry violates
+   * at least one rule. Iterated as a whole in the "Registration validation" describe.
+   */
   invalidUsers: InvalidUserData[];
+  /**
+   * The specific "invalid email + short password" case, exposed under a descriptive
+   * name so tests that need exactly this combination reference it by meaning
+   * (`emailAndPasswordInvalid`) instead of a magic array index (`invalidUsers[2]`).
+   */
+  emailAndPasswordInvalid: InvalidUserData;
 }
 
 /* ------------------------------------------------------------------ */
