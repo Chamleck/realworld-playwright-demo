@@ -1,0 +1,1 @@
+{"id":"2d1261044fb333315d241235c5fe75b7","fullName":"auth.spec.ts:74:9","name":"should reject: Empty username (min length is 1)","status":"passed","testResultsByEnv":{"default":"389b7bd90956ab69f2a5d95d2af3e0d1"}}
